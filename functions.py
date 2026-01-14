@@ -1,43 +1,49 @@
-import openai
-from config import OPENAI_API_KEY
+import google.generativeai as genai
+from config import GEMINI_API_KEY # OpenAI kaliti o'rniga Gemini kaliti
 
-# OpenAI API kalitini sozlash
-openai.api_key = OPENAI_API_KEY
+# Gemini API sozlamalari
+genai.configure(api_key=GEMINI_API_KEY)
 
 def calculate_salary_logic(stavka, soat, sinf_foiz, bhm):
     """
-    O'qituvchi oyligini hisoblash mantiqi:
-    1. Dars soati uchun pul (stavka / 18 soat * amaldagi soat)
-    2. Sinf rahbarlik uchun qo'shimcha (BHMning foizi)
-    3. Soliqlar (13% ayiriladi)
+    O'qituvchi oyligini hisoblash mantiqi (O'zgarishsiz qoldi):
+    1. Dars soati uchun pul
+    2. Sinf rahbarlik
+    3. 13% soliqlar ayirmasi
     """
+    # Stavka yoki BHM ma'lumotlar bazasidan None kelsa, xato bermasligi uchun
+    stavka = float(stavka) if stavka else 0
+    bhm = float(bhm) if bhm else 0
+    
     dars_puli = (stavka / 18) * soat
     sinf_puli = bhm * (sinf_foiz / 100)
     
     jami = dars_puli + sinf_puli
-    toza_oylik = jami * 0.87  # 12% daromad solig'i + 1% INPS = 13% ayirma
+    toza_oylik = jami * 0.87  # 13% ayirma
     
     return round(toza_oylik, 2)
 
 async def get_ai_help(query):
     """
-    OpenAI orqali o'qituvchiga metodik yordam berish funksiyasi.
+    Google Gemini orqali o'qituvchiga metodik yordam berish funksiyasi.
     """
     try:
-        # Haqiqiy API so'rovi
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo", 
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "Siz o'qituvchilarga dars ishlanmasi, insho va metodik yordam beruvchi aqlli yordamchisiz. Javoblarni faqat o'zbek tilida bering."
-                },
-                {"role": "user", "content": query}
-            ],
-            max_tokens=1000,
-            temperature=0.7
+        # Gemini modelini sozlash
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Tizim ko'rsatmasi va foydalanuvchi so'rovi birlashtiriladi
+        full_prompt = (
+            "Siz o'qituvchilarga dars ishlanmasi, insho va metodik yordam beruvchi aqlli yordamchisiz. "
+            "Javoblarni faqat o'zbek tilida, chiroyli va tushunarli tartibda bering.\n\n"
+            f"Foydalanuvchi so'rovi: {query}"
         )
-        return response.choices[0].message.content
+        
+        response = model.generate_content(full_prompt)
+        
+        if response.text:
+            return response.text
+        else:
+            return "😔 AI javob qaytara olmadi. Iltimos, savolni boshqacharoq shakllantiring."
+            
     except Exception as e:
-        # Agar API kalitda pul tugasa yoki xato bo'lsa, foydalanuvchiga tushunarli javob qaytaradi
-        return f"❌ AI bilan bog'lanishda xato yuz berdi. Iltimos, keyinroq urinib ko'ring yoki admin bilan bog'laning.\n\nXato matni: {str(e)}"
+        return f"❌ Gemini AI bilan bog'lanishda xato: {str(e)}"
