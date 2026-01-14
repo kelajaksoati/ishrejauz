@@ -19,13 +19,12 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 db = Database('ebaza_ultimate.db')
 qe = QuizEngine()
 
-# --- FSM HOLATLARI ---
+# --- FSM HOLATLARI (Barcha holatlar birlashtirildi) ---
 class BotStates(StatesGroup):
     calc_toifa = State()
     calc_soat = State()
     ai_query = State()
     reklama = State()
-    set_price_value = State()
     
     add_f_cat = State()
     add_f_subj = State()
@@ -38,11 +37,11 @@ class BotStates(StatesGroup):
     
     add_q_subj = State()
     add_q_file = State()
-    
-    universal_delete = State()
 
+# --- ADMIN TEKSHIRUVI (XAVFSIZ) ---
 def is_admin_check(user_id):
-    return str(user_id) == str(ADMIN_ID) or db.is_admin(user_id, ADMIN_ID)
+    # Faqat config.py dagi ADMIN_ID ga ruxsat beradi
+    return str(user_id) == str(ADMIN_ID)
 
 async def send_files(chat_id, files):
     if not files:
@@ -55,17 +54,16 @@ async def send_files(chat_id, files):
                 logging.error(f"Fayl yuborishda xato: {e}")
                 continue
 
-# --- 1. ASOSIY ---
+# --- 1. ASOSIY BO'LIM ---
 @dp.message_handler(commands=['start'], state="*")
 @dp.message_handler(text="🏠 Bosh menu", state="*")
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
-    # Nikingizdagi g'alati belgilarni tozalash va chiroyli salomlashish
-    user_name = message.from_user.first_name.strip() if message.from_user.first_name else "Foydalanuvchi"
+    user_name = message.from_user.first_name if message.from_user.first_name else "Foydalanuvchi"
     db.add_user(message.from_user.id, message.from_user.full_name)
     await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", reply_markup=kb.main_menu())
 
-# --- 2. OYLIK HISOBLASH ---
+# --- 2. OYLIK HISOBLASH (Siz bergan 2-kod asosida) ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -78,7 +76,8 @@ async def salary_toifa(message: types.Message, state: FSMContext):
         await cmd_start(message, state)
         return
     await state.update_data(toifa=message.text)
-    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", reply_markup=kb.back_menu())
+    # Xato bermasligi uchun kb.main_menu ishlatamiz
+    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", reply_markup=kb.main_menu())
     await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
@@ -86,24 +85,20 @@ async def salary_final(message: types.Message, state: FSMContext):
     if message.text == "🏠 Bosh menu":
         await cmd_start(message, state)
         return
-
     data = await state.get_data()
     try:
-        soat_str = message.text.replace(',', '.')
-        soat = float(soat_str)
+        soat = float(message.text.replace(',', '.'))
         res = func.calculate_salary_from_db(db, data['toifa'], soat)
-        # Maoshni chiroyli formatda chiqarish (1 250 000 ko'rinishida)
-        formatted_res = f"{res:,.0f}".replace(',', ' ')
-        await message.answer(f"📊 *Hisob-kitob:* \n\n🔹 Toifa: {data['toifa']}\n🔹 Dars soati: {soat}\n\n💰 Maoshingiz (qo'lga tegishi): *{formatted_res} so'm*", reply_markup=kb.main_menu())
+        await message.answer(f"💰 Maoshingiz: *{res:,.0f}* so'm".replace(',', ' '), reply_markup=kb.main_menu())
         await state.finish()
-    except ValueError:
-        await message.answer("❌ Iltimos, faqat raqam kiriting! (Masalan: 19.5)")
+    except:
+        await message.answer("❌ Iltimos, faqat raqam kiriting (masalan: 18.5)")
 
-# --- 3. AI YORDAMCHI ---
+# --- 3. AI YORDAMCHI (Siz bergan 3-kod asosida) ---
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("🤖 Savolingizni yo'llang:", reply_markup=kb.back_menu())
+    await message.answer("🤖 Savolingizni yozing:", reply_markup=kb.main_menu())
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
@@ -111,39 +106,17 @@ async def ai_res(message: types.Message, state: FSMContext):
     if message.text == "🏠 Bosh menu":
         await cmd_start(message, state)
         return
-
     wait_msg = await message.answer("⌛️ *O'ylayapman...*")
     try:
         res = await func.get_ai_answer(message.text)
         await wait_msg.delete()
-        await message.answer(f"🤖 *AI Javobi:* \n\n{res}")
-    except Exception as e:
-        await wait_msg.edit_text("❌ AI xatosi yuz berdi. Keyinroq urinib ko'ring.")
-        logging.error(f"AI Error: {e}")
+        await message.answer(f"🤖 AI Javobi:\n\n{res}")
+    except:
+        await wait_msg.edit_text("❌ AI xatosi yuz berdi.")
     finally:
         await state.finish()
 
-# --- 4. BOSHQA FUNKSIYALAR ---
-@dp.message_handler(text="📢 Vakansiyalar")
-async def view_vacancies(message: types.Message):
-    vacs = db.get_items("vacancies")
-    if not vacs:
-        await message.answer("🤷‍♂️ Hozircha bo'sh ish o'rinlari mavjud emas.")
-    else:
-        text = "📢 *Mavjud vakansiyalar:*\n\n"
-        for v in vacs:
-            text += f"🔹 {v[1]}\n"
-        await message.answer(text)
-
-@dp.message_handler(text="📝 Onlayn Test")
-async def online_test_start(message: types.Message):
-    await message.answer("Qaysi fan bo'yicha test topshirmoqchisiz?", reply_markup=kb.subjects_menu())
-
-@dp.message_handler(text="📄 Hujjat yaratish")
-async def doc_gen(message: types.Message):
-    await message.answer("🛠 Bu bo'lim hozirda takomillashtirilmoqda...")
-
-# --- 5. DINAMIK BO'LIMLAR (ISH REJA VA FAYLLAR) ---
+# --- 4. DINAMIK BO'LIMLAR (Ish reja va fayllar) ---
 @dp.message_handler(lambda m: m.text in db.get_categories())
 async def category_select(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
@@ -166,17 +139,37 @@ async def quarter_select(message: types.Message, state: FSMContext):
     files = db.get_files(data.get('cat'), data.get('subj'), message.text)
     await send_files(message.from_user.id, files)
 
-# --- 6. ADMIN PANEL VA BOSHQARUV ---
-@dp.message_handler(text="⚙️ Admin panel")
+# --- 5. BOSHQA FUNKSIYALAR ---
+@dp.message_handler(text="📢 Vakansiyalar")
+async def view_vacancies(message: types.Message):
+    try:
+        vacs = db.get_items("vacancies")
+        if not vacs:
+            await message.answer("🤷‍♂️ Hozircha bo'sh ish o'rinlari mavjud emas.")
+        else:
+            text = "📢 *Mavjud vakansiyalar:*\n\n"
+            for v in vacs: text += f"🔹 {v[1]}\n"
+            await message.answer(text)
+    except:
+        await message.answer("❌ Ma'lumot olishda xato.")
+
+@dp.message_handler(text="📝 Onlayn Test")
+async def online_test_start(message: types.Message):
+    await message.answer("Qaysi fan bo'yicha test topshirmoqchisiz?", reply_markup=kb.subjects_menu())
+
+# --- 6. ADMIN PANEL (XAVFSIZLIK TO'SIG'I BILAN) ---
+@dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_main(message: types.Message):
     if is_admin_check(message.from_user.id):
         await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
+    else:
+        await message.answer("❌ Kechirasiz, siz admin emassiz!")
 
 @dp.message_handler(text="📊 Statistika")
 async def stats(message: types.Message):
     if is_admin_check(message.from_user.id):
         count = db.get_users_count()
-        await message.answer(f"📈 Foydalanuvchilar soni: {count}")
+        await message.answer(f"📈 Jami foydalanuvchilar: {count}")
 
 @dp.message_handler(text="➕ Test qo'shish")
 async def add_test_start(message: types.Message):
@@ -187,7 +180,7 @@ async def add_test_start(message: types.Message):
 @dp.message_handler(state=BotStates.add_q_subj)
 async def add_test_subj(message: types.Message, state: FSMContext):
     await state.update_data(q_subj=message.text)
-    await message.answer(f"📂 *{message.text}* uchun fayl yuboring:", reply_markup=kb.back_menu())
+    await message.answer(f"📂 *{message.text}* uchun fayl (.docx/.pdf) yuboring:", reply_markup=kb.main_menu())
     await BotStates.add_q_file.set()
 
 @dp.message_handler(content_types=['document'], state=BotStates.add_q_file)
