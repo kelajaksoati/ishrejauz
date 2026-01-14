@@ -62,12 +62,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_name = message.from_user.first_name if message.from_user.first_name else "Foydalanuvchi"
     db.add_user(user_id, message.from_user.full_name)
     
-    # Dinamik menyu: admin bo'lsa admin tugmasi bilan chiqadi
-    is_admin = is_admin_check(user_id)
+    # Muvofiqlashtirilgan menyu chaqiruvi
     await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", 
-                         reply_markup=kb.main_menu(is_admin))
+                         reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. OYLIK HISOBLASH (To'g'rilangan versiya) ---
+# --- 2. OYLIK HISOBLASH ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -80,7 +79,9 @@ async def salary_toifa(message: types.Message, state: FSMContext):
         await cmd_start(message, state)
         return
     await state.update_data(toifa=message.text)
-    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    # Bu yerda ham is_admin_check ishlatildi
+    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", 
+                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
@@ -89,9 +90,7 @@ async def salary_final(message: types.Message, state: FSMContext):
         await cmd_start(message, state)
         return
     
-    # Kiritilgan matndagi vergulni nuqtaga almashtiramiz
     text = message.text.replace(',', '.')
-    
     try:
         soat = float(text)
         if soat <= 0 or soat > 40:
@@ -114,7 +113,8 @@ async def salary_final(message: types.Message, state: FSMContext):
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("🤖 Savolingizni yozing:", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await message.answer("🤖 Savolingizni yozing:", 
+                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
@@ -149,12 +149,6 @@ async def subject_select(message: types.Message, state: FSMContext):
         files = db.get_files(cat, message.text)
         await send_files(message.from_user.id, files)
 
-@dp.message_handler(lambda m: m.text in db.get_quarters())
-async def quarter_select(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    files = db.get_files(data.get('cat'), data.get('subj'), message.text)
-    await send_files(message.from_user.id, files)
-
 # --- 5. BOSHQA FUNKSIYALAR ---
 @dp.message_handler(text="📢 Vakansiyalar")
 async def view_vacancies(message: types.Message):
@@ -181,12 +175,6 @@ async def admin_main(message: types.Message):
     else:
         await message.answer("❌ Kechirasiz, siz admin emassiz!")
 
-@dp.message_handler(text="📊 Statistika")
-async def stats(message: types.Message):
-    if is_admin_check(message.from_user.id):
-        count = db.get_users_count()
-        await message.answer(f"📈 Jami foydalanuvchilar: {count}")
-
 @dp.message_handler(text="➕ Test qo'shish")
 async def add_test_start(message: types.Message):
     if is_admin_check(message.from_user.id):
@@ -196,6 +184,7 @@ async def add_test_start(message: types.Message):
 @dp.message_handler(state=BotStates.add_q_subj)
 async def add_test_subj(message: types.Message, state: FSMContext):
     await state.update_data(q_subj=message.text)
+    # Bu yerda ham is_admin_check uzatildi
     await message.answer(f"📂 *{message.text}* uchun fayl (.docx/.pdf) yuboring:", 
                          reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.add_q_file.set()
