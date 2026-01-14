@@ -19,7 +19,7 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 db = Database('ebaza_ultimate.db')
 qe = QuizEngine()
 
-# --- FSM HOLATLARI (Barcha holatlar birlashtirildi) ---
+# --- FSM HOLATLARI ---
 class BotStates(StatesGroup):
     calc_toifa = State()
     calc_soat = State()
@@ -38,9 +38,8 @@ class BotStates(StatesGroup):
     add_q_subj = State()
     add_q_file = State()
 
-# --- ADMIN TEKSHIRUVI (XAVFSIZ) ---
+# --- ADMIN TEKSHIRUVI ---
 def is_admin_check(user_id):
-    # Faqat config.py dagi ADMIN_ID ga ruxsat beradi
     return str(user_id) == str(ADMIN_ID)
 
 async def send_files(chat_id, files):
@@ -59,11 +58,16 @@ async def send_files(chat_id, files):
 @dp.message_handler(text="🏠 Bosh menu", state="*")
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
+    user_id = message.from_user.id
     user_name = message.from_user.first_name if message.from_user.first_name else "Foydalanuvchi"
-    db.add_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", reply_markup=kb.main_menu())
+    db.add_user(user_id, message.from_user.full_name)
+    
+    # Dinamik menyu: admin bo'lsa admin tugmasi bilan chiqadi
+    is_admin = is_admin_check(user_id)
+    await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", 
+                         reply_markup=kb.main_menu(is_admin))
 
-# --- 2. OYLIK HISOBLASH (Siz bergan 2-kod asosida) ---
+# --- 2. OYLIK HISOBLASH (To'g'rilangan versiya) ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -76,8 +80,7 @@ async def salary_toifa(message: types.Message, state: FSMContext):
         await cmd_start(message, state)
         return
     await state.update_data(toifa=message.text)
-    # Xato bermasligi uchun kb.main_menu ishlatamiz
-    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", reply_markup=kb.main_menu())
+    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
@@ -85,20 +88,33 @@ async def salary_final(message: types.Message, state: FSMContext):
     if message.text == "🏠 Bosh menu":
         await cmd_start(message, state)
         return
-    data = await state.get_data()
+    
+    # Kiritilgan matndagi vergulni nuqtaga almashtiramiz
+    text = message.text.replace(',', '.')
+    
     try:
-        soat = float(message.text.replace(',', '.'))
+        soat = float(text)
+        if soat <= 0 or soat > 40:
+            await message.answer("❌ Iltimos, mantiqan to'g'ri soat kiriting (0 dan 40 gacha).")
+            return
+
+        data = await state.get_data()
         res = func.calculate_salary_from_db(db, data['toifa'], soat)
-        await message.answer(f"💰 Maoshingiz: *{res:,.0f}* so'm".replace(',', ' '), reply_markup=kb.main_menu())
+        
+        await message.answer(f"💰 Toifa: {data['toifa']}\n"
+                             f"⏰ Dars soati: {soat}\n"
+                             f"💵 Hisoblangan maosh: *{res:,.0f}* so'm".replace(',', ' '), 
+                             reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
         await state.finish()
-    except:
+        
+    except ValueError:
         await message.answer("❌ Iltimos, faqat raqam kiriting (masalan: 18.5)")
 
-# --- 3. AI YORDAMCHI (Siz bergan 3-kod asosida) ---
+# --- 3. AI YORDAMCHI ---
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("🤖 Savolingizni yozing:", reply_markup=kb.main_menu())
+    await message.answer("🤖 Savolingizni yozing:", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
@@ -116,7 +132,7 @@ async def ai_res(message: types.Message, state: FSMContext):
     finally:
         await state.finish()
 
-# --- 4. DINAMIK BO'LIMLAR (Ish reja va fayllar) ---
+# --- 4. DINAMIK BO'LIMLAR ---
 @dp.message_handler(lambda m: m.text in db.get_categories())
 async def category_select(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
@@ -157,7 +173,7 @@ async def view_vacancies(message: types.Message):
 async def online_test_start(message: types.Message):
     await message.answer("Qaysi fan bo'yicha test topshirmoqchisiz?", reply_markup=kb.subjects_menu())
 
-# --- 6. ADMIN PANEL (XAVFSIZLIK TO'SIG'I BILAN) ---
+# --- 6. ADMIN PANEL ---
 @dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_main(message: types.Message):
     if is_admin_check(message.from_user.id):
@@ -180,7 +196,8 @@ async def add_test_start(message: types.Message):
 @dp.message_handler(state=BotStates.add_q_subj)
 async def add_test_subj(message: types.Message, state: FSMContext):
     await state.update_data(q_subj=message.text)
-    await message.answer(f"📂 *{message.text}* uchun fayl (.docx/.pdf) yuboring:", reply_markup=kb.main_menu())
+    await message.answer(f"📂 *{message.text}* uchun fayl (.docx/.pdf) yuboring:", 
+                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await BotStates.add_q_file.set()
 
 @dp.message_handler(content_types=['document'], state=BotStates.add_q_file)
