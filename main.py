@@ -12,46 +12,51 @@ from quiz_engine import QuizEngine
 import keyboards as kb
 import functions as func
 
-# Sozlamalar
+# --- LOGGING VA SOZLAMALAR ---
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot, storage=MemoryStorage())
 db = Database('ebaza_ultimate.db')
 qe = QuizEngine()
 
-# --- FSM HOLATLARI ---
+# --- YORDAMCHI FUNKSIYALAR ---
+def is_admin_check(user_id):
+    return str(user_id) == str(ADMIN_ID)
+
+def is_float(value):
+    try:
+        float(value.replace(',', '.'))
+        return True
+    except ValueError:
+        return False
+
+# --- FSM HOLATLARI (TO'LIQ) ---
 class BotStates(StatesGroup):
+    # Oylik hisoblash bosqichlari
     calc_toifa = State()
     calc_soat = State()
+    calc_sinf = State()
+    calc_daftar = State()
+    calc_sertifikat = State()
+    calc_staj = State()
+    calc_olis = State()
+    
+    # AI va boshqalar
     ai_query = State()
     reklama = State()
     
+    # Fayl qo'shish
     add_f_cat = State()
     add_f_subj = State()
     add_f_quarter = State()
     add_f_name = State()
     add_f_file = State()
     
+    # Vakansiya va Quiz
     add_vac_title = State()
     add_vac_link = State()
-    
     add_q_subj = State()
     add_q_file = State()
-
-# --- ADMIN TEKSHIRUVI ---
-def is_admin_check(user_id):
-    return str(user_id) == str(ADMIN_ID)
-
-async def send_files(chat_id, files):
-    if not files:
-        await bot.send_message(chat_id, "❌ Hozircha fayllar mavjud emas.")
-    else:
-        for name, f_id in files:
-            try:
-                await bot.send_document(chat_id, f_id, caption=f"📄 {name}")
-            except Exception as e:
-                logging.error(f"Fayl yuborishda xato: {e}")
-                continue
 
 # --- 1. ASOSIY BO'LIM ---
 @dp.message_handler(commands=['start'], state="*")
@@ -59,14 +64,14 @@ async def send_files(chat_id, files):
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
     user_id = message.from_user.id
-    user_name = message.from_user.first_name if message.from_user.first_name else "Foydalanuvchi"
+    user_name = message.from_user.first_name or "Foydalanuvchi"
     db.add_user(user_id, message.from_user.full_name)
     
-    # Muvofiqlashtirilgan menyu chaqiruvi
     await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", 
                          reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. OYLIK HISOBLASH ---
+# --- 2. OYLIK HISOBLASH (BOSQICHMA-BOSQICH) ---
+
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -75,64 +80,96 @@ async def salary_start(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=BotStates.calc_toifa)
 async def salary_toifa(message: types.Message, state: FSMContext):
-    if message.text == "🏠 Bosh menu":
-        await cmd_start(message, state)
-        return
+    if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
     await state.update_data(toifa=message.text)
-    # Bu yerda ham is_admin_check ishlatildi
-    await message.answer("Dars soatingizni kiriting:\n(Masalan: 18 yoki 21.5)", 
-                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await message.answer("Dars soatingizni kiriting (masalan: 18 yoki 22.5):", reply_markup=kb.back_menu())
     await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
-async def salary_final(message: types.Message, state: FSMContext):
-    if message.text == "🏠 Bosh menu":
-        await cmd_start(message, state)
-        return
+async def salary_soat(message: types.Message, state: FSMContext):
+    if not is_float(message.text):
+        return await message.answer("❌ Faqat raqam kiriting (masalan: 18.5)!")
     
-    text = message.text.replace(',', '.')
-    try:
-        soat = float(text)
-        if soat <= 0 or soat > 40:
-            await message.answer("❌ Iltimos, mantiqan to'g'ri soat kiriting (0 dan 40 gacha).")
-            return
+    await state.update_data(soat=message.text.replace(',', '.'))
+    await message.answer("Sinf rahbarligingiz bormi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_sinf.set()
 
-        data = await state.get_data()
-        res = func.calculate_salary_from_db(db, data['toifa'], soat)
-        
-        await message.answer(f"💰 Toifa: {data['toifa']}\n"
-                             f"⏰ Dars soati: {soat}\n"
-                             f"💵 Hisoblangan maosh: *{res:,.0f}* so'm".replace(',', ' '), 
-                             reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
-        await state.finish()
-        
-    except ValueError:
-        await message.answer("❌ Iltimos, faqat raqam kiriting (masalan: 18.5)")
+@dp.message_handler(state=BotStates.calc_sinf)
+async def salary_sinf(message: types.Message, state: FSMContext):
+    val = True if "HA" in message.text.upper() else False
+    await state.update_data(sinf_rahbar=val)
+    await message.answer("Daftar tekshirish (yozuv ishlari) bormi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_daftar.set()
 
-# --- 3. AI YORDAMCHI ---
+@dp.message_handler(state=BotStates.calc_daftar)
+async def salary_daftar(message: types.Message, state: FSMContext):
+    val = True if "HA" in message.text.upper() else False
+    await state.update_data(daftar_tekshirish=val)
+    await message.answer("Sertifikat ustamasi bormi? (Foizda kiriting, yo'q bo'lsa 0):", reply_markup=kb.back_menu())
+    await BotStates.calc_sertifikat.set()
+
+@dp.message_handler(state=BotStates.calc_sertifikat)
+async def salary_sertifikat(message: types.Message, state: FSMContext):
+    if not message.text.isdigit(): return await message.answer("❌ Faqat raqam kiriting!")
+    await state.update_data(sertifikat=int(message.text))
+    await message.answer("Umumiy ish stajingiz necha yil?", reply_markup=kb.back_menu())
+    await BotStates.calc_staj.set()
+
+@dp.message_handler(state=BotStates.calc_staj)
+async def salary_staj(message: types.Message, state: FSMContext):
+    if not message.text.isdigit(): return await message.answer("❌ Faqat raqam kiriting!")
+    await state.update_data(staj=int(message.text))
+    await message.answer("Olis hududda joylashgan maktabmi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_olis.set()
+
+@dp.message_handler(state=BotStates.calc_olis)
+async def salary_final(message: types.Message, state: FSMContext):
+    olis = True if "HA" in message.text.upper() else False
+    await state.update_data(olis_hudud=olis)
+    
+    data = await state.get_data()
+    # Advanced funksiyani chaqirish
+    res = func.calculate_salary_advanced(db, data)
+    
+    result_text = (
+        f"📊 **Hisob-kitob natijasi:**\n\n"
+        f"🔹 Toifa: {data['toifa']}\n"
+        f"🔹 Dars soati: {data['soat']}\n"
+        f"🔹 Ustamalar: {'Sinf rahbari, ' if data['sinf_rahbar'] else ''}"
+        f"{'Daftar tekshirish, ' if data['daftar_tekshirish'] else ''}"
+        f"{data['sertifikat']}% sertifikat\n"
+        f"🔹 Ish staji: {data['staj']} yil\n"
+        f"🔹 Olis hudud: {'Ha' if data['olis_hudud'] else 'Yo\'q'}\n\n"
+        f"💰 **Qo'lga tegadigan oylik: {res:,.0f} so'm**".replace(',', ' ')
+    )
+    
+    await message.answer(result_text, reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await state.finish()
+
+# --- 3. AI YORDAMCHI (NEW MODEL) ---
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("🤖 Savolingizni yozing:", 
-                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await message.answer("🤖 Metodik savolingizni yozing:", 
+                         reply_markup=kb.back_menu())
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
 async def ai_res(message: types.Message, state: FSMContext):
-    if message.text == "🏠 Bosh menu":
-        await cmd_start(message, state)
-        return
+    if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
+    
     wait_msg = await message.answer("⌛️ *O'ylayapman...*")
     try:
         res = await func.get_ai_answer(message.text)
         await wait_msg.delete()
-        await message.answer(f"🤖 AI Javobi:\n\n{res}")
-    except:
-        await wait_msg.edit_text("❌ AI xatosi yuz berdi.")
+        await message.answer(f"🤖 **AI Javobi:**\n\n{res}")
+    except Exception as e:
+        logging.error(f"AI error: {e}")
+        await wait_msg.edit_text("❌ AI xizmatida xatolik yuz berdi.")
     finally:
         await state.finish()
 
-# --- 4. DINAMIK BO'LIMLAR ---
+# --- 4. DINAMIK BO'LIMLAR (Fayllar va Rejalar) ---
 @dp.message_handler(lambda m: m.text in db.get_categories())
 async def category_select(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
@@ -147,67 +184,17 @@ async def subject_select(message: types.Message, state: FSMContext):
         await message.answer("Chorakni tanlang:", reply_markup=kb.quarter_menu())
     else:
         files = db.get_files(cat, message.text)
-        await send_files(message.from_user.id, files)
+        await func.send_files(bot, message.from_user.id, files)
 
-# --- 5. BOSHQA FUNKSIYALAR ---
-@dp.message_handler(text="📢 Vakansiyalar")
-async def view_vacancies(message: types.Message):
-    try:
-        vacs = db.get_items("vacancies")
-        if not vacs:
-            await message.answer("🤷‍♂️ Hozircha bo'sh ish o'rinlari mavjud emas.")
-        else:
-            text = "📢 *Mavjud vakansiyalar:*\n\n"
-            for v in vacs: text += f"🔹 {v[1]}\n"
-            await message.answer(text)
-    except:
-        await message.answer("❌ Ma'lumot olishda xato.")
-
-@dp.message_handler(text="📝 Onlayn Test")
-async def online_test_start(message: types.Message):
-    await message.answer("Qaysi fan bo'yicha test topshirmoqchisiz?", reply_markup=kb.subjects_menu())
-
-# --- 6. ADMIN PANEL ---
+# --- 5. ADMIN VA TESTLAR ---
 @dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_main(message: types.Message):
     if is_admin_check(message.from_user.id):
         await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
     else:
-        await message.answer("❌ Kechirasiz, siz admin emassiz!")
+        await message.answer("❌ Siz admin emassiz!")
 
-@dp.message_handler(text="➕ Test qo'shish")
-async def add_test_start(message: types.Message):
-    if is_admin_check(message.from_user.id):
-        await message.answer("Qaysi fan uchun test yuklamoqchisiz?", reply_markup=kb.subjects_menu())
-        await BotStates.add_q_subj.set()
-
-@dp.message_handler(state=BotStates.add_q_subj)
-async def add_test_subj(message: types.Message, state: FSMContext):
-    await state.update_data(q_subj=message.text)
-    # Bu yerda ham is_admin_check uzatildi
-    await message.answer(f"📂 *{message.text}* uchun fayl (.docx/.pdf) yuboring:", 
-                         reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
-    await BotStates.add_q_file.set()
-
-@dp.message_handler(content_types=['document'], state=BotStates.add_q_file)
-async def handle_quiz_doc(message: types.Message, state: FSMContext):
-    if not message.document.file_name.endswith(('.docx', '.pdf')):
-        return await message.answer("❌ Faqat .docx yoki .pdf yuboring!")
-    
-    file_path = f"downloads/{message.document.file_name}"
-    if not os.path.exists('downloads'): os.makedirs('downloads')
-    await message.document.download(destination_file=file_path)
-    
-    data = await state.get_data()
-    try:
-        questions = qe.parse_quiz_docx(file_path) if file_path.endswith('.docx') else qe.parse_quiz_pdf(file_path)
-        added = qe.save_to_db(questions, data['q_subj'])
-        await message.answer(f"✅ {added} ta savol yuklandi!", reply_markup=kb.admin_menu())
-    except Exception as e:
-        await message.answer(f"❌ Xato: {e}")
-    finally:
-        if os.path.exists(file_path): os.remove(file_path)
-        await state.finish()
-
+# --- ISHGA TUSHIRISH ---
 if __name__ == '__main__':
+    if not os.path.exists('downloads'): os.makedirs('downloads')
     executor.start_polling(dp, skip_updates=True)
