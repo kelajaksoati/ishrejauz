@@ -8,13 +8,26 @@ class Database:
 
     def create_tables(self):
         with self.connection:
+            # Foydalanuvchilar jadvali
             self.cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY)")
-            self.cursor.execute("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, file_id TEXT, category TEXT, subject TEXT)")
+            # Fayllar jadvali
+            self.cursor.execute("""CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                name TEXT, 
+                file_id TEXT, 
+                category TEXT, 
+                subject TEXT)""")
+            # Sozlamalar (BHM va oylik stavkalari) jadvali
             self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)")
             
-            # Oylik stavkalari (Hukumat qarorlariga asosan bazaviy qiymatlar)
-            defaults = [('bhm', 375000), ('oliy', 5000000), ('birinchi', 4500000), 
-                        ('ikkinchi', 4000000), ('mutaxassis', 3500000)]
+            # Boshlang'ich qiymatlarni kiritish
+            defaults = [
+                ('bhm', 375000), 
+                ('oliy', 5000000), 
+                ('birinchi', 4500000), 
+                ('ikkinchi', 4000000), 
+                ('mutaxassis', 3500000)
+            ]
             self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", defaults)
 
     def add_user(self, user_id):
@@ -27,15 +40,13 @@ class Database:
 
     def add_file(self, name, file_id, category, subject):
         with self.connection:
-            return self.cursor.execute("INSERT INTO files (name, file_id, category, subject) VALUES (?, ?, ?, ?)", (name, file_id, category, subject))
+            return self.cursor.execute("INSERT INTO files (name, file_id, category, subject) VALUES (?, ?, ?, ?)", 
+                                    (name, file_id, category, subject))
 
     def get_files(self, category, subject):
         with self.connection:
-            return self.cursor.execute("SELECT name, file_id FROM files WHERE category=? AND subject=?", (category, subject)).fetchall()
-
-    def update_setting(self, key, value):
-        with self.connection:
-            return self.cursor.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
+            return self.cursor.execute("SELECT name, file_id FROM files WHERE category=? AND subject=?", 
+                                    (category, subject)).fetchall()
 
     def get_setting(self, key):
         with self.connection:
