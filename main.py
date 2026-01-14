@@ -74,7 +74,7 @@ async def oylik_res(message: types.Message, state: FSMContext):
     await state.finish()
 
 # --- 📁 FAYLLAR BO'LIMI ---
-@dp.message_handler(text=["📚 Ish rejalar", "📁 Darsliklar"])
+@dp.message_handler(text=["📚 Ish rejalar", "📁 Darsliklar", "📝 Testlar"])
 async def show_files(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
     await message.answer("Fanni tanlang:", reply_markup=kb.subjects_menu())
@@ -87,7 +87,9 @@ async def send_file_res(message: types.Message, state: FSMContext):
         await message.answer("❌ Bu bo'limda fayllar topilmadi.")
     else:
         for name, f_id in files:
-            await bot.send_document(message.from_user.id, f_id, caption=name)
+            try:
+                await bot.send_document(message.from_user.id, f_id, caption=name)
+            except: pass
 
 # --- ⚙️ ADMIN PANEL ---
 @dp.message_handler(text="⚙️ Admin panel")
@@ -95,6 +97,39 @@ async def admin_p(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
 
+# --- ADMIN: YANGI FAYL QO'SHISH ---
+@dp.message_handler(text="➕ Fayl qo'shish")
+async def add_file_start(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        await message.answer("Kategoriyani tanlang:", reply_markup=kb.cat_menu())
+        await BotStates.add_f_cat.set()
+
+@dp.message_handler(state=BotStates.add_f_cat)
+async def add_file_cat(message: types.Message, state: FSMContext):
+    await state.update_data(cat=message.text)
+    await message.answer("Fanni tanlang:", reply_markup=kb.subjects_menu())
+    await BotStates.add_f_subj.set()
+
+@dp.message_handler(state=BotStates.add_f_subj)
+async def add_file_subj(message: types.Message, state: FSMContext):
+    await state.update_data(subj=message.text)
+    await message.answer("Fayl nomini kiriting (Caption):")
+    await BotStates.add_f_name.set()
+
+@dp.message_handler(state=BotStates.add_f_name)
+async def add_file_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer("Endi faylni yuboring (Document):")
+    await BotStates.add_f_file.set()
+
+@dp.message_handler(state=BotStates.add_f_file, content_types=types.ContentType.DOCUMENT)
+async def add_file_final(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    db.add_file(data['name'], message.document.file_id, data['cat'], data['subj'])
+    await message.answer("✅ Fayl muvaffaqiyatli bazaga qo'shildi!", reply_markup=kb.admin_menu())
+    await state.finish()
+
+# --- ADMIN: REKLAMA YUBORISH ---
 @dp.message_handler(text="📢 Reklama yuborish")
 async def rek_p(message: types.Message):
     if message.from_user.id == ADMIN_ID:
@@ -117,6 +152,12 @@ async def send_rek_final(message: types.Message, state: FSMContext):
 @dp.message_handler(text="🏠 Chiqish")
 async def exit_back(message: types.Message):
     await message.answer("Asosiy menu:", reply_markup=kb.main_menu())
+
+# Xatolarni boshqarish
+@dp.errors_handler()
+async def error_handler(update: types.Update, exception: Exception):
+    logging.error(f"Xatolik: {exception}")
+    return True
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
