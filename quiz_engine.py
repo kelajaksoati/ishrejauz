@@ -41,17 +41,14 @@ class QuizEngine:
             text = para.text.strip()
             if not text: continue
 
-            # Savolni aniqlash (1. Savol yoki 1) Savol)
             if re.match(r'^\d+[\. \)]', text):
                 if current_q: questions.append(current_q)
                 current_q = {'question': text, 'options': [], 'answer': 0}
             
-            # Variantni aniqlash (A, B, C yoki D)
             elif re.match(r'^[A-D][\) \.]', text) or re.match(r'^[a-d][\) \.]', text):
                 if current_q:
                     is_correct = '*' in text
                     clean_text = text.replace('*', '').strip()
-                    # Variant harfini olib tashlash (A) matn -> matn)
                     clean_text = re.sub(r'^[A-Da-d][\) \.]', '', clean_text).strip()
                     
                     if is_correct:
@@ -96,7 +93,7 @@ class QuizEngine:
         """Ajratib olingan savollarni bazaga saqlash"""
         count = 0
         for q in questions:
-            if len(q['options']) >= 2: # Kamida 2 ta variant bo'lsa
+            if len(q['options']) >= 2:
                 self.db.add_quiz(
                     q['question'], 
                     json.dumps(q['options']), 
@@ -105,3 +102,41 @@ class QuizEngine:
                 )
                 count += 1
         return count
+
+    def get_test_result(self, user_answers, correct_answers):
+        """
+        Natijani hisoblash va batafsil hisobot shakllantirish.
+        user_answers: [0, 1, 2...] (ID lar ro'yxati)
+        correct_answers: [{'q': '...', 'o': [...], 'a': 0}, ...]
+        """
+        score = 0
+        total = len(correct_answers)
+        if total == 0: return "Siz hali test topshirmadingiz."
+        
+        report = "📊 **Test natijalari:**\n\n"
+
+        for i, (u_ans, c_data) in enumerate(zip(user_answers, correct_answers), 1):
+            correct_id = c_data['a']
+            options = c_data['o']
+            
+            # Xatolikdan qochish uchun tekshiruv
+            try:
+                user_ans_text = options[u_ans]
+                correct_ans_text = options[correct_id]
+            except IndexError:
+                user_ans_text = "Noma'lum"
+                correct_ans_text = options[correct_id]
+
+            if u_ans == correct_id:
+                score += 1
+                report += f"{i}. ✅ To'g'ri\n"
+            else:
+                report += f"{i}. ❌ Xato\n   └ Siz: `{user_ans_text}`\n   └ To'g'ri: `{correct_ans_text}`\n"
+
+        foiz = (score / total) * 100
+        report += f"\n---"
+        report += f"\n✅ To'g'ri javoblar: {score}"
+        report += f"\n❌ Xato javoblar: {total - score}"
+        report += f"\n📈 Umumiy natija: **{foiz:.1f}%**"
+
+        return report
