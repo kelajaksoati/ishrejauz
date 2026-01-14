@@ -42,26 +42,33 @@ class BotStates(StatesGroup):
     universal_delete = State()
 
 def is_admin_check(user_id):
-    return db.is_admin(user_id, ADMIN_ID)
+    return str(user_id) == str(ADMIN_ID) or db.is_admin(user_id, ADMIN_ID)
 
 async def send_files(chat_id, files):
     if not files:
         await bot.send_message(chat_id, "❌ Hozircha fayllar mavjud emas.")
     else:
         for name, f_id in files:
-            await bot.send_document(chat_id, f_id, caption=f"📄 {name}")
+            try:
+                await bot.send_document(chat_id, f_id, caption=f"📄 {name}")
+            except Exception as e:
+                logging.error(f"Fayl yuborishda xato: {e}")
+                continue
 
 # --- 1. ASOSIY ---
 @dp.message_handler(commands=['start'], state="*")
 @dp.message_handler(text="🏠 Bosh menu", state="*")
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
+    # Nikingizdagi g'alati belgilarni tozalash va chiroyli salomlashish
+    user_name = message.from_user.first_name.strip() if message.from_user.first_name else "Foydalanuvchi"
     db.add_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(f"👋 Salom, {message.from_user.first_name}!\nKerakli bo'limni tanlang:", reply_markup=kb.main_menu())
+    await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", reply_markup=kb.main_menu())
 
-# --- 2. OYLIK HISOBLASH (QO'LDA KIRITISH) ---
-@dp.message_handler(text="💰 Oylik hisoblash")
-async def salary_start(message: types.Message):
+# --- 2. OYLIK HISOBLASH ---
+@dp.message_handler(text="💰 Oylik hisoblash", state="*")
+async def salary_start(message: types.Message, state: FSMContext):
+    await state.finish()
     await message.answer("Toifangizni tanlang:", reply_markup=kb.toifa_menu())
     await BotStates.calc_toifa.set()
 
@@ -82,17 +89,20 @@ async def salary_final(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     try:
-        soat_str = message.text.replace(',', '.') # vergulni nuqtaga almashtirish
+        soat_str = message.text.replace(',', '.')
         soat = float(soat_str)
         res = func.calculate_salary_from_db(db, data['toifa'], soat)
-        await message.answer(f"📊 *Hisob-kitob:* \nToifa: {data['toifa']}\nDars soati: {soat}\n\n💰 Maoshingiz: *{res:,} so'm*", reply_markup=kb.main_menu())
+        # Maoshni chiroyli formatda chiqarish (1 250 000 ko'rinishida)
+        formatted_res = f"{res:,.0f}".replace(',', ' ')
+        await message.answer(f"📊 *Hisob-kitob:* \n\n🔹 Toifa: {data['toifa']}\n🔹 Dars soati: {soat}\n\n💰 Maoshingiz (qo'lga tegishi): *{formatted_res} so'm*", reply_markup=kb.main_menu())
         await state.finish()
     except ValueError:
         await message.answer("❌ Iltimos, faqat raqam kiriting! (Masalan: 19.5)")
 
 # --- 3. AI YORDAMCHI ---
-@dp.message_handler(text="🤖 AI Yordamchi")
-async def ai_start(message: types.Message):
+@dp.message_handler(text="🤖 AI Yordamchi", state="*")
+async def ai_start(message: types.Message, state: FSMContext):
+    await state.finish()
     await message.answer("🤖 Savolingizni yo'llang:", reply_markup=kb.back_menu())
     await BotStates.ai_query.set()
 
@@ -113,7 +123,7 @@ async def ai_res(message: types.Message, state: FSMContext):
     finally:
         await state.finish()
 
-# --- 4. QO'SHIMCHA TUGMALAR HANDLERLARI ---
+# --- 4. BOSHQA FUNKSIYALAR ---
 @dp.message_handler(text="📢 Vakansiyalar")
 async def view_vacancies(message: types.Message):
     vacs = db.get_items("vacancies")
@@ -143,7 +153,7 @@ async def category_select(message: types.Message, state: FSMContext):
 async def subject_select(message: types.Message, state: FSMContext):
     data = await state.get_data()
     cat = data.get('cat', '')
-    if "Ish reja" in cat:
+    if cat and "Ish reja" in cat:
         await state.update_data(subj=message.text)
         await message.answer("Chorakni tanlang:", reply_markup=kb.quarter_menu())
     else:
@@ -165,16 +175,14 @@ async def admin_main(message: types.Message):
 @dp.message_handler(text="📊 Statistika")
 async def stats(message: types.Message):
     if is_admin_check(message.from_user.id):
-        await message.answer(f"📈 Foydalanuvchilar soni: {db.get_users_count()}")
+        count = db.get_users_count()
+        await message.answer(f"📈 Foydalanuvchilar soni: {count}")
 
 @dp.message_handler(text="➕ Test qo'shish")
 async def add_test_start(message: types.Message):
     if is_admin_check(message.from_user.id):
         await message.answer("Qaysi fan uchun test yuklamoqchisiz?", reply_markup=kb.subjects_menu())
         await BotStates.add_q_subj.set()
-
-# (Qolgan barcha admin funksiyalari o'z holicha saqlandi...)
-# [add_q_subj, add_q_file, add_f_cat, add_vac va h.k. handlerlari]
 
 @dp.message_handler(state=BotStates.add_q_subj)
 async def add_test_subj(message: types.Message, state: FSMContext):
