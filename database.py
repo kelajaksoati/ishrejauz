@@ -14,12 +14,12 @@ class Database:
                 full_name TEXT, 
                 role TEXT DEFAULT 'user')""")
             
-            # 2. Kategoriyalar, Fanlar va Choraklar (Dinamik menyular uchun)
+            # 2. Kategoriyalar, Fanlar va Choraklar
             self.cursor.execute("CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS subjects (name TEXT PRIMARY KEY)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS quarters (name TEXT PRIMARY KEY)")
             
-            # 3. Fayllar jadvali (Chorak bilan birga)
+            # 3. Fayllar jadvali
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 name TEXT, 
@@ -28,10 +28,9 @@ class Database:
                 subject TEXT, 
                 quarter TEXT)""")
             
-            # 4. Sozlamalar jadvali (Oylik hisoblash: BHM, stavkalar uchun)
+            # 4. Sozlamalar jadvali
             self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)")
             
-            # Boshlang'ich oylik sozlamalarini kiritish
             defaults = [
                 ('bhm', 375000), 
                 ('oliy', 5000000), 
@@ -54,6 +53,13 @@ class Database:
                 title TEXT, 
                 link TEXT)""")
 
+    # --- UNIVERSAL FUNKSIYA (Siz so'ragan) ---
+    def get_items(self, table_name):
+        """Berilgan jadvaldagi barcha ma'lumotlarni qaytaradi"""
+        with self.connection:
+            self.cursor.execute(f"SELECT * FROM {table_name}")
+            return self.cursor.fetchall()
+
     # --- FOYDALANUVCHI VA ADMIN BOSHQARUVI ---
     def add_user(self, user_id, full_name=None):
         with self.connection:
@@ -64,7 +70,7 @@ class Database:
             self.cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
 
     def is_admin(self, user_id, main_admin_id):
-        if user_id == int(main_admin_id): return True
+        if str(user_id) == str(main_admin_id): return True
         with self.connection:
             res = self.cursor.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
             return res and res[0] == 'admin'
@@ -75,12 +81,10 @@ class Database:
 
     # --- UNIVERSAL QO'SHISH VA O'CHIRISH ---
     def add_item(self, table, column, value):
-        # Masalan: add_item('subjects', 'name', 'Matematika')
         with self.connection:
             self.cursor.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?)", (value,))
 
     def delete_item(self, table, column, value):
-        # Masalan: delete_item('quarters', 'name', '1-chorak')
         with self.connection:
             self.cursor.execute(f"DELETE FROM {table} WHERE {column} = ?", (value,))
 
@@ -99,7 +103,7 @@ class Database:
             return self.cursor.execute("SELECT name, file_id FROM files WHERE category=? AND subject=?", 
                                        (cat, subj)).fetchall()
 
-    # --- SOZLAMALAR (OYLIK HISOB-KITOB UCHUN) ---
+    # --- SOZLAMALAR (OYLIK UCHUN) ---
     def update_setting(self, key, value):
         with self.connection:
             self.cursor.execute("UPDATE settings SET value = ? WHERE key = ?", (value, key))
@@ -111,13 +115,16 @@ class Database:
 
     # --- DINAMIK RO'YXATLARNI OLISH ---
     def get_categories(self):
-        return [r[0] for r in self.cursor.execute("SELECT name FROM categories").fetchall()]
+        res = self.cursor.execute("SELECT name FROM categories").fetchall()
+        return [r[0] for r in res]
 
     def get_subjects(self):
-        return [r[0] for r in self.cursor.execute("SELECT name FROM subjects").fetchall()]
+        res = self.cursor.execute("SELECT name FROM subjects").fetchall()
+        return [r[0] for r in res]
 
     def get_quarters(self):
-        return [r[0] for r in self.cursor.execute("SELECT name FROM quarters").fetchall()]
+        res = self.cursor.execute("SELECT name FROM quarters").fetchall()
+        return [r[0] for r in res]
 
     # --- BAZANI TOZALASH ---
     def clear_all_data(self):
@@ -125,4 +132,3 @@ class Database:
         with self.connection:
             for table in tables:
                 self.cursor.execute(f"DELETE FROM {table}")
-            self.connection.commit()
