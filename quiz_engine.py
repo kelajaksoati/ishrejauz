@@ -1,14 +1,30 @@
+import random
+import json
+from database import Database
+
 class QuizEngine:
     def __init__(self):
-        self.data = {
-            "Matematika": [
-                {"q": "Sin(90) nechaga teng?", "o": ["0", "1", "0.5"], "a": "1"},
-                {"q": "2x2*2=?", "o": ["8", "6", "4"], "a": "8"}
-            ],
-            "Pedagogika": [
-                {"q": "Didaktika nima?", "o": ["O'qitish nazariyasi", "Tarbiya", "Fan"], "a": "O'qitish nazariyasi"}
-            ]
-        }
+        # Bazaga ulanish
+        self.db = Database('ebaza_ultimate.db')
 
     def get_quiz(self, subject):
-        return self.data.get(subject, [])
+        """Bazadan berilgan fan bo'yicha testlarni oladi va formatlaydi"""
+        raw_quizzes = self.db.get_quizzes(subject)
+        
+        if not raw_quizzes:
+            return []
+
+        formatted_quizzes = []
+        for q in raw_quizzes:
+            # q[0] - savol, q[1] - variantlar (JSON string), q[2] - to'g'ri javob ID
+            options = json.loads(q[1]) # Stringni ro'yxatga aylantiramiz
+            
+            formatted_quizzes.append({
+                "q": q[0],
+                "o": options,
+                "a": options[q[2]] # To'g'ri javob matni
+            })
+            
+        # Savollar har safar har xil tartibda chiqishi uchun
+        random.shuffle(formatted_quizzes)
+        return formatted_quizzes
