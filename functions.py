@@ -1,14 +1,14 @@
 import logging
 import google.generativeai as genai
-from config import AI_API_KEY  # Config faylingizdagi nomga qarab tekshiring
+from config import AI_API_KEY
 
-# AI (Gemini) Sozlamasi
+# Gemini AI sozlamasi
 genai.configure(api_key=AI_API_KEY)
 
 async def get_ai_answer(query):
     """
-    Google Gemini (1.5-flash) orqali metodik yordam olish.
-    Xavfsizlik sozlamalari javob to'xtab qolmasligini ta'minlaydi.
+    Google Gemini (1.5-flash) orqali o'qituvchilarga metodik yordam berish.
+    Xavfsizlik sozlamalari blokirovkasiz ishlashni ta'minlaydi.
     """
     try:
         safety_settings = [
@@ -26,60 +26,59 @@ async def get_ai_answer(query):
         prompt = (
             "Siz o'zbekistonlik o'qituvchilarga yordam beruvchi tajribali metodist assistentsiz. "
             "Pedagogik texnologiyalar, dars ishlanmalari va metodik masalalarda aniq yordam bering. "
-            "Javoblarni faqat o'zbek tilida, tushunarli va Markdown formatida taqdim eting.\n\n"
+            "Javoblarni faqat o'zbek tilida, tushunarli, chiroyli va Markdown formatida taqdim eting.\n\n"
             f"Savol: {query}"
         )
         
         response = model.generate_content(prompt)
+        return response.text if response and response.text else "😔 Javob topilmadi."
         
-        if response and response.text:
-            return response.text
-        else:
-            return "😔 Kechirasiz, bu savolga javob topa olmadim. Savolni boshqacharoq yozib ko'ring."
-
     except Exception as e:
         logging.error(f"AI Error: {e}")
-        return "❌ AI xatosi yuz berdi. Iltimos, keyinroq urinib ko'ring."
+        return "❌ AI bilan bog'lanishda xato yuz berdi. Iltimos, keyinroq urinib ko'ring."
 
 def calculate_salary_from_db(db, toifa, soat):
     """
-    Bazadan BHM va toifa koeffitsientlarini olib oylikni hisoblash.
-    Soliqlar (13%) chegirilgan holda 'qo'lga tegadigan' summani qaytaradi.
+    Bazadagi stavkalar yoki koeffitsientlar asosida oylikni hisoblaydi.
+    13% soliq (12% daromad + 1% pensiya) avtomatik chegiriladi.
     """
     try:
-        # Bazadan barcha sozlamalarni olish
-        settings = db.get_settings() 
+        # Bazadan barcha sozlamalarni lug'at ko'rinishida olamiz
+        settings = db.get_settings()
         
-        # BHM qiymatini olish (default 375,000 so'm)
+        # Kiruvchi soatni formatlash (nuqta yoki vergul bo'lsa ham)
+        soat_val = float(str(soat).replace(',', '.'))
+        toifa_name = toifa.lower()
+        
+        # BHM qiymati (agar koeffitsient ishlatilsa kerak bo'ladi)
         bhm = settings.get('bhm', 375000)
         
-        # Kiruvchi soatni raqamga o'tkazish
-        soat_val = float(str(soat).replace(',', '.'))
-        
-        # Toifaga qarab koeffitsient kalitini aniqlash
-        toifa_name = toifa.lower()
+        # Toifa kalitini aniqlash va bazadagi qiymatni olish
         if "oliy" in toifa_name:
-            coeff_key = 'oliy'
+            val = settings.get('oliy', 5000000)
         elif "birinchi" in toifa_name:
-            coeff_key = 'birinchi'
+            val = settings.get('birinchi', 4500000)
         elif "ikkinchi" in toifa_name:
-            coeff_key = 'ikkinchi'
+            val = settings.get('ikkinchi', 4000000)
         else:
-            coeff_key = 'mutaxassis'
+            val = settings.get('mutaxassis', 3500000)
 
-        # Bazadan koeffitsientni olish (default 1.0)
-        coeff = settings.get(coeff_key, 1.0)
+        # Mantiqiy tekshiruv: 
+        # Agar bazadagi qiymat kichik bo'lsa (masalan 10 dan kichik), demak bu koeffitsient.
+        # Agar katta bo'lsa (masalan 1 000 000 dan katta), demak bu tayyor stavka summasi.
+        if val < 50: 
+            stavka = bhm * val
+        else:
+            stavka = val
+
+        # Hisoblash formulasi: (Stavka / 18 soat) * haqiqiy dars soati
+        gross_salary = (stavka / 18) * soat_val
         
-        # 1. Jami hisoblangan (Yalpi) maosh
-        # Formula: (BHM * Koeffitsient) * (Soat / 18)
-        gross_salary = (float(bhm) * float(coeff)) * (soat_val / 18)
-        
-        # 2. Soliqlarni ayirish (12% Daromad + 1% INPS = 13%)
-        # Qo'lga tegadigan summa = Yalpi maosh * 0.87
+        # Qo'lga tegadigan summa: 13% soliq chegirilgan (100% - 13% = 87%)
         net_salary = gross_salary * 0.87
         
         return round(net_salary, 0)
         
     except Exception as e:
-        logging.error(f"Oylik hisoblashda xato: {e}")
+        logging.error(f"Calculation Error: {e}")
         return 0
