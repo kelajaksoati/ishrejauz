@@ -9,18 +9,18 @@ def main_menu():
 
 def subjects_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    subjects = ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"]
-    for s in subjects:
+    for s in ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"]:
         markup.insert(KeyboardButton(s))
     markup.add("⬅️ Orqaga")
     return markup
 
 def toifa_menu():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Oliy", "Birinchi", "Ikkinchi", "Mutaxassis")
-    return markup
+    return ReplyKeyboardMarkup(resize_keyboard=True).add("Oliy", "Birinchi", "Ikkinchi", "Mutaxassis")
+
+def yes_no():
+    return ReplyKeyboardMarkup(resize_keyboard=True).add("Ha (100%)", "Yo'q")
 
 def admin_menu():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("📢 Reklama", "➕ Fayl qo'shish", "⚙️ BHM tahrirlash", "🧹 Tozalash", "🏠 Chiqish")
     return markup
