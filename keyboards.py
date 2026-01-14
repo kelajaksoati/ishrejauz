@@ -13,18 +13,28 @@ def back_menu():
 
 # --- FOYDALANUVCHI MENYULARI ---
 
-def main_menu():
+def main_menu(is_admin=False):
+    """
+    Asosiy menyu: Bazadagi kategoriyalarni chiqaradi.
+    is_admin=True bo'lsa, Admin panel tugmasi qo'shiladi.
+    """
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # Bazadagi barcha dinamik kategoriyalarni chiqaradi
-    categories = db.get_categories()
-    for cat in categories:
-        markup.insert(KeyboardButton(cat))
     
-    # Doimiy funksiyalar
+    # 1. Bazadagi barcha dinamik kategoriyalarni (masalan: Ish rejalar) chiqaradi
+    categories = db.get_categories()
+    if categories:
+        for cat in categories:
+            markup.insert(KeyboardButton(cat))
+    
+    # 2. Doimiy funksiyalar (o'zgarmas tugmalar)
     markup.add("💰 Oylik hisoblash", "📝 Onlayn Test")
     markup.add("📄 Hujjat yaratish", "🤖 AI Yordamchi")
     markup.add("📢 Vakansiyalar", "🎨 Portfolio")
-    markup.add("⚙️ Admin panel")
+    
+    # 3. Admin tekshiruvi: Faqat admin bo'lsa tugma chiqadi
+    if is_admin:
+        markup.add("⚙️ Admin panel")
+        
     return markup
 
 def toifa_menu():
@@ -73,7 +83,7 @@ def admin_menu():
     return markup
 
 def settings_menu():
-    # Narxlarni o'zgartirish uchun qulay menyu
+    # Narxlarni o'zgartirish uchun inline menyu
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton("BHM", callback_data="set_bhm"),
