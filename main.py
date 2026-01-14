@@ -8,41 +8,44 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from config import BOT_TOKEN, ADMIN_ID
 from database import Database
 import keyboards as kb
-from functions import calculate_salary_logic
+import functions as func
+import generator as gen
+from quiz_engine import QuizEngine
 
-# Loglarni sozlash
+# Loglar va Bot sozlamalari
 logging.basicConfig(level=logging.INFO)
-
-# Bot va Dispatcher
 bot = Bot(token=BOT_TOKEN, parse_mode="Markdown")
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+dp = Dispatcher(bot, storage=MemoryStorage())
 db = Database('ebaza_ultimate.db')
+quiz = QuizEngine()
 
-# --- FSM Holatlari ---
+# --- BARCHA FSM HOLATLARI ---
 class BotStates(StatesGroup):
-    # Oylik hisoblash
+    # Oylik
     calc_toifa = State()
     calc_soat = State()
     calc_sinf = State()
-    # Fayl qo'shish (Admin)
+    # Admin: Fayl
     add_f_cat = State()
     add_f_subj = State()
     add_f_name = State()
     add_f_file = State()
-    # Reklama
+    # Admin: Reklama va BHM
     reklama = State()
-    # Hujjat yaratish
-    doc_name = State()
+    edit_bhm = State()
+    # Premium
+    ai_query = State()
+    test_process = State()
+    hujjat_ism = State()
 
-# --- Handlerlar ---
-
+# --- 1. ASOSIY KOMANDALAR ---
 @dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.finish() # Har safar start bosilganda holatlarni tozalash
     db.add_user(message.from_user.id)
-    await message.answer(f"Xush kelibsiz, {message.from_user.first_name}! 👋\nPremium E-Baza botiga kiring.", reply_markup=kb.main_menu())
+    await message.answer(f"👋 Salom, {message.from_user.first_name}!\n*Ultra Premium E-Baza* botiga xush kelibsiz!", reply_markup=kb.main_menu())
 
-# --- 💰 OYLIK HISOBLASH ---
+# --- 2. 💰 OYLIK HISOBLASH HANDLERLARI ---
 @dp.message_handler(text="💰 Oylik hisoblash")
 async def oylik_start(message: types.Message):
     await message.answer("Toifangizni tanlang:", reply_markup=kb.toifa_menu())
@@ -51,13 +54,12 @@ async def oylik_start(message: types.Message):
 @dp.message_handler(state=BotStates.calc_toifa)
 async def oylik_step2(message: types.Message, state: FSMContext):
     await state.update_data(toifa=message.text.lower())
-    await message.answer("Haftalik dars soatingizni kiriting (raqamda):", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("Dars soatingizni kiriting:", reply_markup=types.ReplyKeyboardRemove())
     await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
 async def oylik_step3(message: types.Message, state: FSMContext):
-    if not message.text.isdigit():
-        return await message.answer("Iltimos, faqat raqam kiriting!")
+    if not message.text.isdigit(): return await message.answer("Raqam kiriting!")
     await state.update_data(soat=int(message.text))
     await message.answer("Sinf rahbarligingiz bormi?", reply_markup=kb.yes_no())
     await BotStates.calc_sinf.set()
@@ -65,99 +67,108 @@ async def oylik_step3(message: types.Message, state: FSMContext):
 @dp.message_handler(state=BotStates.calc_sinf)
 async def oylik_res(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    sinf_foiz = 100 if message.text == "Ha" else 0
-    bhm = db.get_setting('bhm')
-    stavka = db.get_setting(data['toifa'])
-    
-    natija = calculate_salary_logic(stavka, data['soat'], sinf_foiz, bhm)
-    await message.answer(f"✅ *Hisob-kitob:* \n\n💰 Qo'lga tegadigan summa: {natija:,} so'm", reply_markup=kb.main_menu())
+    sinf = 100 if message.text == "Ha" else 0
+    res = func.calculate_salary_logic(db.get_setting(data['toifa']), data['soat'], sinf, db.get_setting('bhm'))
+    await message.answer(f"✅ Hisoblandi: *{res:,}* so'm", reply_markup=kb.main_menu())
     await state.finish()
 
-# --- 📁 FAYLLAR BO'LIMI ---
+# --- 3. 🤖 AI VA 📄 HUJJAT GENERATOR ---
+@dp.message_handler(text="🤖 AI Yordamchi")
+async def ai_ask(message: types.Message):
+    await message.answer("Mavzuni yozing (masalan: 'Insho mavzulari'):")
+    await BotStates.ai_query.set()
+
+@dp.message_handler(state=BotStates.ai_query)
+async def ai_ans(message: types.Message, state: FSMContext):
+    msg = await message.answer("🔍 AI tahlil qilmoqda...")
+    res = await func.get_ai_help(message.text)
+    await msg.edit_text(res)
+    await state.finish()
+
+@dp.message_handler(text="📄 Hujjat yaratish")
+async def doc_ask(message: types.Message):
+    await message.answer("Hujjat uchun to'liq ismingizni yozing:")
+    await BotStates.hujjat_ism.set()
+
+@dp.message_handler(state=BotStates.hujjat_ism)
+async def doc_gen(message: types.Message, state: FSMContext):
+    pdf = gen.generate_certificate_pdf(message.text, "A'lo")
+    await message.answer_document(types.InputFile(pdf, filename="hujjat.pdf"), caption="Tayyor! ✅")
+    await state.finish()
+
+# --- 4. 📚 FAYLLAR VA TESTLAR ---
 @dp.message_handler(text=["📚 Ish rejalar", "📁 Darsliklar", "📝 Testlar"])
-async def show_files(message: types.Message, state: FSMContext):
+async def file_cat(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
     await message.answer("Fanni tanlang:", reply_markup=kb.subjects_menu())
 
-@dp.message_handler(lambda m: m.text in ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"])
-async def send_file_res(message: types.Message, state: FSMContext):
+@dp.message_handler(lambda m: m.text in ["Ona tili", "Matematika", "Ingliz tili", "Fizika", "Kimyo"])
+async def file_send(message: types.Message, state: FSMContext):
     data = await state.get_data()
     files = db.get_files(data.get('cat'), message.text)
-    if not files:
-        await message.answer("❌ Bu bo'limda fayllar topilmadi.")
-    else:
-        for name, f_id in files:
-            try:
-                await bot.send_document(message.from_user.id, f_id, caption=name)
-            except: pass
+    if not files: await message.answer("Fayl topilmadi.")
+    for n, f_id in files:
+        await bot.send_document(message.from_user.id, f_id, caption=n)
+    await state.finish()
 
-# --- ⚙️ ADMIN PANEL ---
+# --- 5. ⚙️ ADMIN PANEL BARCHA FUNKSIYALARI ---
 @dp.message_handler(text="⚙️ Admin panel")
-async def admin_p(message: types.Message):
+async def admin_main(message: types.Message):
     if message.from_user.id == ADMIN_ID:
-        await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
+        await message.answer("🛠 Admin boshqaruvi:", reply_markup=kb.admin_menu())
 
-# --- ADMIN: YANGI FAYL QO'SHISH ---
 @dp.message_handler(text="➕ Fayl qo'shish")
-async def add_file_start(message: types.Message):
+async def add_f(message: types.Message):
     if message.from_user.id == ADMIN_ID:
-        await message.answer("Kategoriyani tanlang:", reply_markup=kb.cat_menu())
+        await message.answer("Kategoriya?", reply_markup=kb.cat_menu())
         await BotStates.add_f_cat.set()
 
 @dp.message_handler(state=BotStates.add_f_cat)
-async def add_file_cat(message: types.Message, state: FSMContext):
+async def add_f2(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
-    await message.answer("Fanni tanlang:", reply_markup=kb.subjects_menu())
+    await message.answer("Fan?", reply_markup=kb.subjects_menu())
     await BotStates.add_f_subj.set()
 
 @dp.message_handler(state=BotStates.add_f_subj)
-async def add_file_subj(message: types.Message, state: FSMContext):
+async def add_f3(message: types.Message, state: FSMContext):
     await state.update_data(subj=message.text)
-    await message.answer("Fayl nomini kiriting (Caption):")
+    await message.answer("Nomini yozing:")
     await BotStates.add_f_name.set()
 
 @dp.message_handler(state=BotStates.add_f_name)
-async def add_file_name(message: types.Message, state: FSMContext):
+async def add_f4(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("Endi faylni yuboring (Document):")
+    await message.answer("Faylni yuboring:")
     await BotStates.add_f_file.set()
 
-@dp.message_handler(state=BotStates.add_f_file, content_types=types.ContentType.DOCUMENT)
-async def add_file_final(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    db.add_file(data['name'], message.document.file_id, data['cat'], data['subj'])
-    await message.answer("✅ Fayl muvaffaqiyatli bazaga qo'shildi!", reply_markup=kb.admin_menu())
+@dp.message_handler(state=BotStates.add_f_file, content_types=['document'])
+async def add_f_final(message: types.Message, state: FSMContext):
+    d = await state.get_data()
+    db.add_file(d['name'], message.document.file_id, d['cat'], d['subj'])
+    await message.answer("✅ Saqlandi!", reply_markup=kb.admin_menu())
     await state.finish()
 
-# --- ADMIN: REKLAMA YUBORISH ---
 @dp.message_handler(text="📢 Reklama yuborish")
-async def rek_p(message: types.Message):
+async def rek_start(message: types.Message):
     if message.from_user.id == ADMIN_ID:
-        await message.answer("Reklama xabarini yuboring (Rasm, Video yoki Matn):")
+        await message.answer("Xabarni yuboring:")
         await BotStates.reklama.set()
 
-@dp.message_handler(state=BotStates.reklama, content_types=types.ContentType.ANY)
-async def send_rek_final(message: types.Message, state: FSMContext):
+@dp.message_handler(state=BotStates.reklama, content_types=['any'])
+async def rek_send(message: types.Message, state: FSMContext):
     users = db.get_users()
-    count = 0
     for u in users:
         try:
             await message.copy_to(u[0])
-            count += 1
             await asyncio.sleep(0.05)
-        except: pass
-    await message.answer(f"✅ Reklama {count} ta foydalanuvchiga yuborildi.", reply_markup=kb.admin_menu())
+        except: continue
+    await message.answer("✅ Tugadi.", reply_markup=kb.admin_menu())
     await state.finish()
 
 @dp.message_handler(text="🏠 Chiqish")
-async def exit_back(message: types.Message):
-    await message.answer("Asosiy menu:", reply_markup=kb.main_menu())
-
-# Xatolarni boshqarish
-@dp.errors_handler()
-async def error_handler(update: types.Update, exception: Exception):
-    logging.error(f"Xatolik: {exception}")
-    return True
+async def go_home(message: types.Message, state: FSMContext):
+    await state.finish()
+    await cmd_start(message, state)
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
