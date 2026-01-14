@@ -11,9 +11,11 @@ class Database:
             self.cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, file_id TEXT, category TEXT, subject TEXT)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL)")
-            # Standart stavkalarni kiritish
-            default_settings = [('bhm', 375000), ('oliy', 5000000), ('birinchi', 4500000), ('ikkinchi', 4000000), ('mutaxassis', 3500000)]
-            self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", default_settings)
+            
+            # Oylik stavkalari (Hukumat qarorlariga asosan bazaviy qiymatlar)
+            defaults = [('bhm', 375000), ('oliy', 5000000), ('birinchi', 4500000), 
+                        ('ikkinchi', 4000000), ('mutaxassis', 3500000)]
+            self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", defaults)
 
     def add_user(self, user_id):
         with self.connection:
@@ -40,6 +42,6 @@ class Database:
             res = self.cursor.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
             return res[0] if res else 0
 
-    def clean_users(self):
+    def clean_db(self):
         with self.connection:
             return self.cursor.execute("DELETE FROM users")
