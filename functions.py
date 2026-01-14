@@ -1,3 +1,4 @@
+import logging
 import google.generativeai as genai
 from config import GEMINI_API_KEY
 
@@ -7,28 +8,46 @@ genai.configure(api_key=GEMINI_API_KEY)
 async def get_ai_answer(query):
     """Google Gemini orqali metodik yordam olish"""
     try:
-        # Yangiroq va tezroq model: gemini-1.5-flash
-        model = genai.GenerativeModel('gemini-1.5-flash') 
+        # Xavfsizlik sozlamalari (javob to'xtab qolmasligi uchun)
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            safety_settings=safety_settings
+        )
         
         prompt = (
-            "Siz o'qituvchilarga yordam beruvchi aqlli assistentsiz. "
-            "Pedagogik texnologiyalar, dars ishlanmalari va metodik masalalarda yordam bering. "
-            "Javoblarni faqat o'zbek tilida, tushunarli va chiroyli formatda bering.\n\n"
+            "Siz o'zbekistonlik o'qituvchilarga yordam beruvchi tajribali metodist assistentsiz. "
+            "Pedagogik texnologiyalar, dars ishlanmalari va metodik masalalarda aniq va metodik yordam bering. "
+            "Javoblarni faqat o'zbek tilida, tushunarli, chiroyli va Markdown formatida (bold, list) taqdim eting.\n\n"
             f"Savol: {query}"
         )
         
+        # Async rejimda ishlatish (aiogram uchun yaxshi)
         response = model.generate_content(prompt)
-        return response.text if response.text else "😔 Kechirasiz, bu savolga javob topolmadim."
+        
+        if response and response.text:
+            return response.text
+        else:
+            return "😔 Kechirasiz, bu savolga javob bera olmayman. Savolni boshqacharoq shakllantirib ko'ring."
+
     except Exception as e:
-        return f"❌ AI xatosi yuz berdi. Keyinroq urinib ko'ring."
+        logging.error(f"AI Error: {e}")
+        return f"❌ AI xatosi yuz berdi. Iltimos, API kalit va internetni tekshiring."
 
 def calculate_salary_from_db(db, toifa, soat):
     """
-    Bazadagi narxlar (stavka) asosida oylikni hisoblaydi.
-    1 stavka = 18 soat deb olingan.
+    Bazadagi narxlar asosida oylikni hisoblaydi.
     """
     try:
-        # Toifa nomini tozalash (masalan: "O'rta maxsus" -> "mutaxassis")
+        # Raqamni tozalash (vergul bo'lsa nuqtaga aylantirish)
+        soat_val = float(str(soat).replace(',', '.'))
+        
         toifa_key = toifa.lower().replace("'", "").replace(" ", "")
         
         if "oliy" in toifa_key:
@@ -40,32 +59,31 @@ def calculate_salary_from_db(db, toifa, soat):
         else:
             base = db.get_setting('mutaxassis')
         
-        # Hisoblash: (Stavka miqdori / 18 soat) * o'qituvchi soati
-        jami = (base / 18) * float(soat)
+        # Oylik bazada bo'lmasa 0 qaytmasligi uchun tekshiruv
+        if not base:
+            base = 2500000 # Default qiymat agar bazada bo'lmasa
+
+        # (Stavka / 18 soat) * o'qituvchi soati
+        jami = (float(base) / 18) * soat_val
         
-        # Daromad solig'i va pensiya (13%) ayirib tashlanganda (qolgan qismi 87%)
+        # 12% daromad solig'i + 1% pensiya jamg'armasi = 13% (ayirma 0.87)
         toza_oylik = jami * 0.87
         
-        return round(toza_oylik, 2)
+        return round(toza_oylik, 0) # Butun songacha yaxlitlash
     except Exception as e:
-        print(f"Hisoblashda xato: {e}")
+        logging.error(f"Salary Calculation Error: {e}")
         return 0
 
 def calculate_salary_logic(stavka, soat, sinf_foiz, bhm):
-    """
-    Qo'lda kiritilgan ma'lumotlar orqali sinf rahbarlik bilan birga hisoblash.
-    """
+    """Qo'lda kiritilgan ma'lumotlar orqali hisoblash"""
     try:
-        s = float(stavka) if stavka else 0
-        h = float(soat) if soat else 0
-        f = float(sinf_foiz) if sinf_foiz else 0
-        b = float(bhm) if bhm else 0
+        s = float(str(stavka).replace(',', '.'))
+        h = float(str(soat).replace(',', '.'))
+        f = float(str(sinf_foiz).replace(',', '.'))
+        b = float(str(bhm).replace(',', '.'))
         
-        # Formula: (Dars soati oyligi) + (Sinf rahbarlik foizi BHMga nisbatan)
         jami = ((s / 18) * h) + (b * (f / 100))
-        
-        # Soliqlar ayirilgandagi summa
         toza_oylik = jami * 0.87
-        return round(toza_oylik, 2)
+        return round(toza_oylik, 0)
     except:
         return 0
