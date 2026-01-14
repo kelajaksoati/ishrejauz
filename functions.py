@@ -1,49 +1,39 @@
 import google.generativeai as genai
-from config import GEMINI_API_KEY # OpenAI kaliti o'rniga Gemini kaliti
+from config import GEMINI_API_KEY
 
-# Gemini API sozlamalari
+# Gemini API ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
 
-def calculate_salary_logic(stavka, soat, sinf_foiz, bhm):
-    """
-    O'qituvchi oyligini hisoblash mantiqi (O'zgarishsiz qoldi):
-    1. Dars soati uchun pul
-    2. Sinf rahbarlik
-    3. 13% soliqlar ayirmasi
-    """
-    # Stavka yoki BHM ma'lumotlar bazasidan None kelsa, xato bermasligi uchun
-    stavka = float(stavka) if stavka else 0
-    bhm = float(bhm) if bhm else 0
-    
-    dars_puli = (stavka / 18) * soat
-    sinf_puli = bhm * (sinf_foiz / 100)
-    
-    jami = dars_puli + sinf_puli
-    toza_oylik = jami * 0.87  # 13% ayirma
-    
-    return round(toza_oylik, 2)
-
 async def get_ai_help(query):
-    """
-    Google Gemini orqali o'qituvchiga metodik yordam berish funksiyasi.
-    """
+    """Google Gemini orqali metodik yordam olish"""
     try:
-        # Gemini modelini sozlash
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash') # Yangiroq va tezroq model
         
-        # Tizim ko'rsatmasi va foydalanuvchi so'rovi birlashtiriladi
-        full_prompt = (
-            "Siz o'qituvchilarga dars ishlanmasi, insho va metodik yordam beruvchi aqlli yordamchisiz. "
-            "Javoblarni faqat o'zbek tilida, chiroyli va tushunarli tartibda bering.\n\n"
-            f"Foydalanuvchi so'rovi: {query}"
+        prompt = (
+            "Siz o'qituvchilarga yordam beruvchi aqlli assistentsiz. "
+            "Javoblarni faqat o'zbek tilida va tushunarli bering.\n\n"
+            f"Savol: {query}"
         )
         
-        response = model.generate_content(full_prompt)
-        
-        if response.text:
-            return response.text
-        else:
-            return "😔 AI javob qaytara olmadi. Iltimos, savolni boshqacharoq shakllantiring."
-            
+        response = model.generate_content(prompt)
+        return response.text if response.text else "😔 Javob topilmadi."
     except Exception as e:
-        return f"❌ Gemini AI bilan bog'lanishda xato: {str(e)}"
+        return f"❌ AI xatosi: {str(e)}"
+
+def calculate_salary_logic(stavka, soat, sinf_foiz, bhm):
+    """Oylik hisoblash formulasi"""
+    try:
+        # Ma'lumotlar kelmasa, 0 deb qabul qilamiz
+        s = float(stavka) if stavka else 0
+        h = float(soat) if soat else 0
+        f = float(sinf_foiz) if sinf_foiz else 0
+        b = float(bhm) if bhm else 0
+        
+        # Formula: ((Stavka / 18) * Soat) + (BHM * foiz)
+        jami = ((s / 18) * h) + (b * (f / 100))
+        
+        # 13% soliqni ayirib tashlaymiz (Daromad solig'i + Pensiya jamg'armasi)
+        toza_oylik = jami * 0.87
+        return round(toza_oylik, 2)
+    except:
+        return 0
