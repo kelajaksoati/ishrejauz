@@ -1,14 +1,14 @@
 class QuizEngine:
     def __init__(self):
-        self.questions = {
+        self.data = {
             "Matematika": [
-                {"q": "2+2*2=?", "o": ["6", "8", "4"], "a": "6"},
-                {"q": "Ildiz ostida 16?", "o": ["4", "8", "2"], "a": "4"}
+                {"q": "Sin(90) nechaga teng?", "o": ["0", "1", "0.5"], "a": "1"},
+                {"q": "2x2*2=?", "o": ["8", "6", "4"], "a": "8"}
             ],
             "Pedagogika": [
-                {"q": "Ta'limning asosi nima?", "o": ["Tarbiyaviy", "Bilim", "Dars"], "a": "Bilim"}
+                {"q": "Didaktika nima?", "o": ["O'qitish nazariyasi", "Tarbiya", "Fan"], "a": "O'qitish nazariyasi"}
             ]
         }
 
-    def get_questions(self, subject):
-        return self.questions.get(subject, [])
+    def get_quiz(self, subject):
+        return self.data.get(subject, [])
