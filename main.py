@@ -38,14 +38,56 @@ class BotStates(StatesGroup):
     test_process = State()
     hujjat_ism = State()
 
+# --- ADMIN TEKSHIRUV FUNKSIYASI ---
+def is_admin_check(user_id):
+    return db.is_admin(user_id, ADMIN_ID)
+
 # --- 1. ASOSIY KOMANDALAR ---
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message, state: FSMContext):
-    await state.finish() # Har safar start bosilganda holatlarni tozalash
+    await state.finish()
     db.add_user(message.from_user.id)
     await message.answer(f"👋 Salom, {message.from_user.first_name}!\n*Ultra Premium E-Baza* botiga xush kelibsiz!", reply_markup=kb.main_menu())
 
-# --- 2. 💰 OYLIK HISOBLASH HANDLERLARI ---
+# --- ADMINLARNI BOSHQARISH (FAQAT ASOSIY ADMIN UCHUN) ---
+@dp.message_handler(commands=['admins'])
+async def list_admins(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        admins = db.get_admins()
+        text = f"👑 *Asosiy admin:* `{ADMIN_ID}`\n\n"
+        text += "👤 *Yordamchi adminlar:*\n"
+        if not admins:
+            text += "_Hozircha yordamchilar yo'q_"
+        else:
+            for adm in admins:
+                text += f"• `{adm[0]}`\n"
+        
+        text += "\n➕ Qo'shish: `/add_admin ID`\n➖ O'chirish: `/remove_admin ID`"
+        await message.answer(text)
+
+@dp.message_handler(commands=['add_admin'])
+async def add_admin_cmd(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        parts = message.text.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            new_id = int(parts[1])
+            db.set_role(new_id, 'admin')
+            await message.answer(f"✅ Foydalanuvchi `{new_id}` admin qilib tayinlandi!")
+        else:
+            await message.answer("⚠️ Xato! Format: `/add_admin 12345678`")
+
+@dp.message_handler(commands=['remove_admin'])
+async def remove_admin_cmd(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        parts = message.text.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            rem_id = int(parts[1])
+            db.set_role(rem_id, 'user')
+            await message.answer(f"❌ Foydalanuvchi `{rem_id}` adminlikdan olindi!")
+        else:
+            await message.answer("⚠️ Xato! Format: `/remove_admin 12345678`")
+
+# --- 2. 💰 OYLIK HISOBLASH ---
 @dp.message_handler(text="💰 Oylik hisoblash")
 async def oylik_start(message: types.Message):
     await message.answer("Toifangizni tanlang:", reply_markup=kb.toifa_menu())
@@ -111,15 +153,15 @@ async def file_send(message: types.Message, state: FSMContext):
         await bot.send_document(message.from_user.id, f_id, caption=n)
     await state.finish()
 
-# --- 5. ⚙️ ADMIN PANEL BARCHA FUNKSIYALARI ---
+# --- 5. ⚙️ ADMIN PANEL ---
 @dp.message_handler(text="⚙️ Admin panel")
 async def admin_main(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
+    if is_admin_check(message.from_user.id):
         await message.answer("🛠 Admin boshqaruvi:", reply_markup=kb.admin_menu())
 
 @dp.message_handler(text="➕ Fayl qo'shish")
 async def add_f(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
+    if is_admin_check(message.from_user.id):
         await message.answer("Kategoriya?", reply_markup=kb.cat_menu())
         await BotStates.add_f_cat.set()
 
@@ -150,19 +192,21 @@ async def add_f_final(message: types.Message, state: FSMContext):
 
 @dp.message_handler(text="📢 Reklama yuborish")
 async def rek_start(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
+    if is_admin_check(message.from_user.id):
         await message.answer("Xabarni yuboring:")
         await BotStates.reklama.set()
 
 @dp.message_handler(state=BotStates.reklama, content_types=['any'])
 async def rek_send(message: types.Message, state: FSMContext):
     users = db.get_users()
+    count = 0
     for u in users:
         try:
             await message.copy_to(u[0])
+            count += 1
             await asyncio.sleep(0.05)
         except: continue
-    await message.answer("✅ Tugadi.", reply_markup=kb.admin_menu())
+    await message.answer(f"✅ Tugadi. {count} ta odamga yetib bordi.", reply_markup=kb.admin_menu())
     await state.finish()
 
 @dp.message_handler(text="🏠 Chiqish")
