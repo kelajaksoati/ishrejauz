@@ -3,11 +3,19 @@ from database import Database
 
 db = Database('ebaza_ultimate.db')
 
+# --- YORDAMCHI TUGMALAR ---
+
+def back_menu():
+    """Orqaga qaytish tugmasi"""
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(KeyboardButton("🏠 Bosh menu"))
+    return markup
+
 # --- FOYDALANUVCHI MENYULARI ---
 
 def main_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # Bazadagi barcha dinamik kategoriyalarni chiqaradi (Ish rejalar, Darsliklar va h.k.)
+    # Bazadagi barcha dinamik kategoriyalarni chiqaradi
     categories = db.get_categories()
     for cat in categories:
         markup.insert(KeyboardButton(cat))
