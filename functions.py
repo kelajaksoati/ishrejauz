@@ -1,28 +1,16 @@
 import logging
-import google.generativeai as genai
+from google import genai
 from config import AI_API_KEY
 
-# Gemini AI sozlamasi
-genai.configure(api_key=AI_API_KEY)
+# Gemini AI yangi kutubxona mijozi
+client = genai.Client(api_key=AI_API_KEY)
 
 async def get_ai_answer(query):
     """
-    Google Gemini (1.5-flash) orqali o'qituvchilarga metodik yordam berish.
-    Xavfsizlik sozlamalari blokirovkasiz ishlashni ta'minlaydi.
+    Google Gemini 2.0 Flash orqali metodik yordam olish.
+    404 xatoligi va eskirgan kutubxona muammolari hal qilingan.
     """
     try:
-        safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ]
-
-        model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
-            safety_settings=safety_settings
-        )
-        
         prompt = (
             "Siz o'zbekistonlik o'qituvchilarga yordam beruvchi tajribali metodist assistentsiz. "
             "Pedagogik texnologiyalar, dars ishlanmalari va metodik masalalarda aniq yordam bering. "
@@ -30,55 +18,78 @@ async def get_ai_answer(query):
             f"Savol: {query}"
         )
         
-        response = model.generate_content(prompt)
-        return response.text if response and response.text else "😔 Javob topilmadi."
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        
+        if response and response.text:
+            return response.text
+        return "😔 Javob topilmadi. Savolni boshqacharoq shaklda berib ko'ring."
         
     except Exception as e:
         logging.error(f"AI Error: {e}")
-        return "❌ AI bilan bog'lanishda xato yuz berdi. Iltimos, keyinroq urinib ko'ring."
+        return "❌ AI xizmatida vaqtinchalik uzilish yuz berdi. Iltimos, keyinroq urinib ko'ring."
 
-def calculate_salary_from_db(db, toifa, soat):
+def calculate_salary_advanced(db, data):
     """
-    Bazadagi stavkalar yoki koeffitsientlar asosida oylikni hisoblaydi.
-    13% soliq (12% daromad + 1% pensiya) avtomatik chegiriladi.
+    O'qituvchi oyligini barcha ustamalar bilan hisoblash:
+    - Sinf rahbarlik
+    - Daftar tekshirish
+    - Sertifikat (% da)
+    - Ish staji
+    - Olis hudud
+    - 13% soliq chegirmasi
     """
     try:
-        # Bazadan barcha sozlamalarni lug'at ko'rinishida olamiz
+        # Bazadan joriy sozlamalarni olish
         settings = db.get_settings()
         
-        # Kiruvchi soatni formatlash (nuqta yoki vergul bo'lsa ham)
-        soat_val = float(str(soat).replace(',', '.'))
-        toifa_name = toifa.lower()
-        
-        # BHM qiymati (agar koeffitsient ishlatilsa kerak bo'ladi)
+        # Kiruvchi ma'lumotlarni tozalash
+        soat = float(str(data.get('soat', 0)).replace(',', '.'))
         bhm = settings.get('bhm', 375000)
+        toifa = str(data.get('toifa', 'mutaxassis')).lower()
         
-        # Toifa kalitini aniqlash va bazadagi qiymatni olish
-        if "oliy" in toifa_name:
-            val = settings.get('oliy', 5000000)
-        elif "birinchi" in toifa_name:
-            val = settings.get('birinchi', 4500000)
-        elif "ikkinchi" in toifa_name:
-            val = settings.get('ikkinchi', 4000000)
-        else:
-            val = settings.get('mutaxassis', 3500000)
-
-        # Mantiqiy tekshiruv: 
-        # Agar bazadagi qiymat kichik bo'lsa (masalan 10 dan kichik), demak bu koeffitsient.
-        # Agar katta bo'lsa (masalan 1 000 000 dan katta), demak bu tayyor stavka summasi.
-        if val < 50: 
-            stavka = bhm * val
-        else:
-            stavka = val
-
-        # Hisoblash formulasi: (Stavka / 18 soat) * haqiqiy dars soati
-        gross_salary = (stavka / 18) * soat_val
+        # 1. Toifa bo'yicha bazaviy stavka (bazadan yoki standart qiymat)
+        stavka = settings.get(toifa, 3500000)
         
-        # Qo'lga tegadigan summa: 13% soliq chegirilgan (100% - 13% = 87%)
-        net_salary = gross_salary * 0.87
+        # Mantiqiy tekshiruv: Agar bazada koeffitsient bo'lsa (masalan 11.64)
+        if stavka < 100:
+            stavka = bhm * stavka
+            
+        # Asosiy dars soati uchun hisoblangan maosh
+        maosh = (stavka / 18) * soat
+
+        # 2. Sinf rahbarlik (BHMning 50% miqdorida)
+        if data.get('sinf_rahbar'):
+            maosh += bhm * 0.5
+
+        # 3. Daftar tekshirish (BHMning 15% miqdorida)
+        if data.get('daftar_tekshirish'):
+            maosh += bhm * 0.15
+
+        # 4. Sertifikat ustamasi (Stavkaga nisbatan foizda, masalan 20 yoki 50)
+        sertifikat_foiz = int(data.get('sertifikat', 0))
+        if sertifikat_foiz > 0:
+            maosh += stavka * (sertifikat_foiz / 100)
+
+        # 5. Ish staji (Ko'p yillik xizmati uchun)
+        staj = int(data.get('staj', 0))
+        if staj >= 25:
+            maosh += stavka * 0.20  # 20% ustama
+        elif staj >= 10:
+            maosh += stavka * 0.10  # 10% ustama
+
+        # 6. Olis hudud (Odatda stavkaning 25% miqdorida)
+        if data.get('olis_hudud'):
+            maosh += stavka * 0.25
+
+        # 7. Soliqlar (12% daromad + 1% INPS = 13% chegirma)
+        # Qo'lga tegadigan summa = Jami * 0.87
+        net_salary = maosh * 0.87
         
         return round(net_salary, 0)
         
     except Exception as e:
-        logging.error(f"Calculation Error: {e}")
+        logging.error(f"Salary Calculation Error: {e}")
         return 0
