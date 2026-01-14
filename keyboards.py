@@ -1,26 +1,48 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
+# Asosiy Menu
 def main_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("💰 Oylik hisoblash", "📚 Ish rejalar")
-    markup.add("📝 Testlar", "📁 Darsliklar")
-    markup.add("ℹ️ Ma'lumot", "⚙️ Admin panel")
+    markup.add(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("📝 Onlayn Test"))
+    markup.add(KeyboardButton("📄 Hujjat yaratish"), KeyboardButton("🤖 AI Yordamchi"))
+    markup.add(KeyboardButton("📚 Ish rejalar"), KeyboardButton("📁 Darsliklar"))
+    markup.add(KeyboardButton("ℹ️ Ma'lumot"), KeyboardButton("⚙️ Admin panel"))
     return markup
 
+# Fanlar menyusi
 def subjects_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    for s in ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"]:
+    subjects = ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"]
+    for s in subjects:
         markup.insert(KeyboardButton(s))
-    markup.add("⬅️ Orqaga")
+    markup.add(KeyboardButton("🏠 Asosiy Menu"))
     return markup
 
+# Toifalar
 def toifa_menu():
-    return ReplyKeyboardMarkup(resize_keyboard=True).add("Oliy", "Birinchi", "Ikkinchi", "Mutaxassis")
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add("Oliy", "Birinchi", "Ikkinchi", "Mutaxassis")
+    return markup
 
+# Ha/Yo'q tanlovi
 def yes_no():
-    return ReplyKeyboardMarkup(resize_keyboard=True).add("Ha (100%)", "Yo'q")
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add("Ha", "Yo'q")
+    return markup
 
+# Admin Panel Menu
 def admin_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("📢 Reklama", "➕ Fayl qo'shish", "⚙️ BHM tahrirlash", "🧹 Tozalash", "🏠 Chiqish")
+    markup.add("📢 Reklama yuborish", "➕ Fayl qo'shish")
+    markup.add("⚙️ BHMni o'zgartirish", "📊 Statistika")
+    markup.add("🧹 Bazani tozalash", "🏠 Chiqish")
+    return markup
+
+# Test uchun fanlar (Inline)
+def test_subjects_inline():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("Matematika", callback_data="quiz_matem"),
+        InlineKeyboardButton("Pedagogika", callback_data="quiz_pedagog")
+    )
     return markup
