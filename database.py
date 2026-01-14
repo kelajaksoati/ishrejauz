@@ -53,33 +53,27 @@ class Database:
                 title TEXT, 
                 link TEXT)""")
 
-    # --- UNIVERSAL FUNKSIYA (Siz so'ragan) ---
+    # --- SOZLAMALARNI LUG'AT KO'RINISHIDA OLISH ---
+    def get_settings(self):
+        """Barcha sozlamalarni lug'at ko'rinishida qaytaradi (Oylik hisoblash uchun)"""
+        with self.connection:
+            res = self.cursor.execute("SELECT key, value FROM settings").fetchall()
+            return {row[0]: row[1] for row in res}
+
+    # --- UNIVERSAL FUNKSIYALAR ---
     def get_items(self, table_name):
-        """Berilgan jadvaldagi barcha ma'lumotlarni qaytaradi"""
         with self.connection:
             self.cursor.execute(f"SELECT * FROM {table_name}")
             return self.cursor.fetchall()
 
-    # --- FOYDALANUVCHI VA ADMIN BOSHQARUVI ---
     def add_user(self, user_id, full_name=None):
         with self.connection:
             self.cursor.execute("INSERT OR IGNORE INTO users (id, full_name) VALUES (?, ?)", (user_id, full_name))
-
-    def set_role(self, user_id, role):
-        with self.connection:
-            self.cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
-
-    def is_admin(self, user_id, main_admin_id):
-        if str(user_id) == str(main_admin_id): return True
-        with self.connection:
-            res = self.cursor.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
-            return res and res[0] == 'admin'
 
     def get_users_count(self):
         with self.connection:
             return self.cursor.execute("SELECT COUNT(id) FROM users").fetchone()[0]
 
-    # --- UNIVERSAL QO'SHISH VA O'CHIRISH ---
     def add_item(self, table, column, value):
         with self.connection:
             self.cursor.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?)", (value,))
@@ -88,7 +82,7 @@ class Database:
         with self.connection:
             self.cursor.execute(f"DELETE FROM {table} WHERE {column} = ?", (value,))
 
-    # --- FAYLLAR BILAN ISHLASH ---
+    # --- FAYLLAR ---
     def add_file(self, name, f_id, cat, subj, quarter=None):
         with self.connection:
             self.cursor.execute("""INSERT INTO files (name, file_id, category, subject, quarter) 
@@ -103,17 +97,6 @@ class Database:
             return self.cursor.execute("SELECT name, file_id FROM files WHERE category=? AND subject=?", 
                                        (cat, subj)).fetchall()
 
-    # --- SOZLAMALAR (OYLIK UCHUN) ---
-    def update_setting(self, key, value):
-        with self.connection:
-            self.cursor.execute("UPDATE settings SET value = ? WHERE key = ?", (value, key))
-
-    def get_setting(self, key):
-        with self.connection:
-            res = self.cursor.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-            return res[0] if res else 0
-
-    # --- DINAMIK RO'YXATLARNI OLISH ---
     def get_categories(self):
         res = self.cursor.execute("SELECT name FROM categories").fetchall()
         return [r[0] for r in res]
@@ -126,7 +109,6 @@ class Database:
         res = self.cursor.execute("SELECT name FROM quarters").fetchall()
         return [r[0] for r in res]
 
-    # --- BAZANI TOZALASH ---
     def clear_all_data(self):
         tables = ['files', 'subjects', 'quizzes', 'categories', 'quarters', 'vacancies']
         with self.connection:
