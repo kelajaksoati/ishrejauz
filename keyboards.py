@@ -22,6 +22,7 @@ def yes_no_menu():
 def main_menu(is_admin=False):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
+    # Kategoriyalarni bazadan dinamik olish
     categories = db.get_categories()
     if categories:
         for cat in categories:
@@ -65,25 +66,17 @@ def quarter_menu():
 # --- 3. TEST (QUIZ) UCHUN TUGMALAR ---
 
 def quiz_answer_menu(correct_id, options_count=3):
-    """
-    Test savollari uchun variantlar (Inline).
-    correct_id: to'g'ri javob indexi (0, 1, 2...)
-    options_count: variantlar soni
-    """
     markup = InlineKeyboardMarkup(row_width=options_count)
     labels = ["A", "B", "C", "D", "E"]
     btns = []
     
     for i in range(options_count):
-        # callback_data: quiz_javob_tanlanganIndex_to'g'riIndex
-        # Masalan: quiz_ans_0_1 (A ni bosdi, lekin B to'g'ri)
         btns.append(InlineKeyboardButton(
             labels[i], 
             callback_data=f"quiz_ans_{i}_{correct_id}"
         ))
     
     markup.add(*btns)
-    # Testni to'xtatish tugmasi
     markup.add(InlineKeyboardButton("❌ Testni yakunlash", callback_data="quiz_stop"))
     return markup
 
@@ -108,9 +101,10 @@ def admin_menu():
 def settings_menu():
     """Narx va BHM sozlamalari (Inline)"""
     markup = InlineKeyboardMarkup(row_width=2)
+    # Hozirgi narxlarni bazadan olish (ixtiyoriy, callback_data muhim)
     markup.add(
-        InlineKeyboardButton("💰 BHM", callback_data="set_bhm"),
-        InlineKeyboardButton("🎓 Oliy", callback_data="set_oliy"),
+        InlineKeyboardButton("💰 BHMni o'zgartirish", callback_data="set_bhm"),
+        InlineKeyboardButton("🎓 Oliy toifa", callback_data="set_oliy"),
         InlineKeyboardButton("🥈 1-toifa", callback_data="set_birinchi"),
         InlineKeyboardButton("🥉 2-toifa", callback_data="set_ikkinchi"),
         InlineKeyboardButton("🎖 Mutaxassis", callback_data="set_mutaxassis")
