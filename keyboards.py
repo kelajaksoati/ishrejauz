@@ -22,15 +22,14 @@ def yes_no_menu():
 def main_menu(is_admin=False):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
-    # A) Avval bazadagi dinamik kategoriyalarni qo'shamiz
+    # A) Avval bazadagi dinamik kategoriyalarni qo'shish
     categories = db.get_categories()
     if categories:
         for cat in categories:
-            # Agar bazada bu tugmalar bo'lsa, takrorlanmasligi uchun tekshiruv
             if cat not in ["📁 Darsliklar", "🎨 Portfolio"]:
                 markup.insert(KeyboardButton(cat))
     
-    # B) Siz xohlagan doimiy va yo'qolgan tugmalarni aniq joylashtiramiz
+    # B) Asosiy 8 ta tugmani aniq tartibda joylashtirish
     markup.row(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
     markup.row(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
     markup.row(KeyboardButton("📄 Hujjat yaratish"), KeyboardButton("📁 Darsliklar"))
@@ -104,10 +103,12 @@ def admin_menu():
     return markup
 
 def settings_menu():
-    """Narx va BHM sozlamalari (Inline)"""
+    """Narx, BHM va boshqa ustamalarni o'zgartirish (Siz so'ragan yangi variant)"""
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton("💰 BHMni o'zgartirish", callback_data="set_bhm"),
+        InlineKeyboardButton("📚 Daftar tekshirish", callback_data="set_daftar"),
+        InlineKeyboardButton("🏫 Kabinet mudirligi", callback_data="set_kabinet"),
         InlineKeyboardButton("🎓 Oliy toifa", callback_data="set_oliy"),
         InlineKeyboardButton("🥈 1-toifa", callback_data="set_birinchi"),
         InlineKeyboardButton("🥉 2-toifa", callback_data="set_ikkinchi"),
@@ -118,7 +119,6 @@ def settings_menu():
 # --- 5. ALOQA (FEEDBACK) UCHUN ADMIN TUGMASI ---
 
 def feedback_reply_markup(user_id):
-    """Admin foydalanuvchining savoliga javob berishi uchun"""
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("✍️ Javob berish", callback_data=f"reply_{user_id}"))
     return markup
