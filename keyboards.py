@@ -1,7 +1,7 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from database import Database
 
-# Bazaga ulanish (Dinamik tugmalar uchun)
+# Bazaga ulanish
 db = Database('ebaza_ultimate.db')
 
 # --- 1. YORDAMCHI VA DOIMIY TUGMALAR ---
@@ -13,8 +13,8 @@ def back_menu():
     return markup
 
 def yes_no_menu():
-    """Ha/Yo'q tanlovi uchun (Oylik hisoblashda ishlatiladi)"""
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    """Ha/Yo'q tanlovi"""
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(KeyboardButton("✅ HA"), KeyboardButton("❌ YO'Q"))
     markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
@@ -22,55 +22,53 @@ def yes_no_menu():
 # --- 2. FOYDALANUVCHI MENYULARI ---
 
 def main_menu(is_admin=False):
-    """
-    Asosiy menyu: Kategoriya va xizmatlar.
-    """
+    """Asosiy menyu: Dinamik kategoriyalar va xizmatlar"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
-    # Bazadagi dinamik kategoriyalar (Ish rejalar, Darsliklar va h.k.)
+    # 1. Bazadagi dinamik kategoriyalar (Ish rejalar, Darsliklar va h.k.)
     categories = db.get_categories()
     if categories:
         for cat in categories:
             markup.insert(KeyboardButton(cat))
     
-    # Asosiy xizmatlar
-    markup.add("💰 Oylik hisoblash", "📝 Onlayn Test")
-    markup.add("📄 Hujjat yaratish", "🤖 AI Yordamchi")
-    markup.add("📢 Vakansiyalar", "🎨 Portfolio")
+    # 2. Asosiy xizmatlar
+    markup.add(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
+    markup.add(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
     
-    # Admin bo'lsa, sozlamalar tugmasini qo'shish
+    # Admin bo'lsa, admin panel tugmasini qo'shish
     if is_admin:
-        markup.add("⚙️ Admin panel")
+        markup.add(KeyboardButton("⚙️ Admin panel"))
         
     return markup
 
 def toifa_menu():
     """Oylik hisoblash uchun toifalar"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("Oliy", "Birinchi")
-    markup.add("Ikkinchi", "Mutaxassis")
-    markup.add("O'rta maxsus", "🏠 Bosh menu")
+    markup.add(
+        KeyboardButton("Oliy"), KeyboardButton("Birinchi"),
+        KeyboardButton("Ikkinchi"), KeyboardButton("Mutaxassis"),
+        KeyboardButton("🏠 Bosh menu")
+    )
     return markup
 
 def subjects_menu():
-    """Fanlar ro'yxati (Baza yoki Default)"""
+    """Fanlar ro'yxati (Bazadan)"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     subjs = db.get_subjects()
-    if not subjs:
-        subjs = ["Ona tili", "Matematika", "Ingliz tili", "Tarix", "Fizika", "Biologiya"]
-    
-    for s in subjs:
-        markup.insert(KeyboardButton(s))
-    markup.add("🏠 Bosh menu")
+    if subjs:
+        for s in subjs:
+            markup.insert(KeyboardButton(s))
+    markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
 
 def quarter_menu():
-    """Choraklar uchun"""
+    """Choraklar (Bazadan dinamik)"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     quarters = db.get_quarters()
-    for q in quarters:
-        markup.insert(KeyboardButton(q))
-    markup.add("🏠 Bosh menu")
+    if quarters:
+        for q in quarters:
+            markup.insert(KeyboardButton(q))
+    markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
 
 # --- 3. ADMIN MENYULARI ---
@@ -78,11 +76,16 @@ def quarter_menu():
 def admin_menu():
     """Admin boshqaruv paneli"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("📊 Statistika", "📢 Xabar yuborish")
-    markup.add("➕ Kategoriya/Fan/Chorak", "➕ Fayl qo'shish")
-    markup.add("➕ Test qo'shish", "➕ Vakansiya qo'shish")
-    markup.add("⚙️ Narxlarni o'zgartirish", "🧹 Bazani tozalash")
-    markup.add("🏠 Bosh menu")
+    btns = [
+        KeyboardButton("➕ Fayl qo'shish"),
+        KeyboardButton("➕ Vakansiya qo'shish"),
+        KeyboardButton("📅 O'quv yilini o'zgartirish"),
+        KeyboardButton("🔢 Choraklarni boshqarish"),
+        KeyboardButton("📊 Statistika"),
+        KeyboardButton("⚙️ Narxlarni o'zgartirish"),
+        KeyboardButton("🏠 Bosh menu")
+    ]
+    markup.add(*btns)
     return markup
 
 def settings_menu():
