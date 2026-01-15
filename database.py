@@ -45,20 +45,27 @@ class Database:
                 title TEXT, 
                 link TEXT)""")
 
-            # 7. Aloqa (Feedback) jadvali - MUKAMMAL QILINDI
+            # 7. Aloqa (Feedback) jadvali
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 user_id INTEGER, 
                 question TEXT, 
                 status TEXT DEFAULT 'new')""")
 
-            # Default sozlamalar
+            # Default sozlamalar (YANGILANDI: daftar va kabinet qo'shildi)
             defaults = [
                 ('bhm', '375000'), ('oliy', '5000000'), 
                 ('birinchi', '4500000'), ('ikkinchi', '4000000'), 
-                ('mutaxassis', '3500000'), ('study_year', '2024-2025')
+                ('mutaxassis', '3500000'), ('study_year', '2024-2025'),
+                ('daftar', '110000'), ('kabinet', '110000')
             ]
             self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", defaults)
+
+    # --- SOZLAMALARNI YANGILASH (SIZ SO'RAGAN METOD) ---
+    def update_setting(self, key, value):
+        """Settings jadvalidagi qiymatni yangilash yoki qo'shish"""
+        with self.connection:
+            self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
 
     # --- TESTLAR BILAN ISHLASH ---
     def add_quiz(self, question, options_json, correct_id, subject):
@@ -123,16 +130,13 @@ class Database:
 
     # --- ALOQA (FEEDBACK) METODLARI ---
     def add_feedback(self, user_id, question):
-        """Foydalanuvchi savolini saqlash"""
         with self.connection:
             self.cursor.execute("INSERT INTO feedback (user_id, question) VALUES (?, ?)", (user_id, question))
 
     def get_new_feedback(self):
-        """Hali javob berilmagan savollarni olish"""
         return self.cursor.execute("SELECT * FROM feedback WHERE status='new'").fetchall()
 
     def update_feedback_status(self, f_id, status='replied'):
-        """Savol holatini yangilash (masalan, javob berilgandan so'ng)"""
         with self.connection:
             self.cursor.execute("UPDATE feedback SET status=? WHERE id=?", (status, f_id))
 
