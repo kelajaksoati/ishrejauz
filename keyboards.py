@@ -22,18 +22,19 @@ def yes_no_menu():
 def main_menu(is_admin=False):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
-    # Kategoriyalarni bazadan dinamik olish
+    # A) Avval bazadagi dinamik kategoriyalarni qo'shamiz
     categories = db.get_categories()
     if categories:
         for cat in categories:
-            markup.insert(KeyboardButton(cat))
+            # Agar bazada bu tugmalar bo'lsa, takrorlanmasligi uchun tekshiruv
+            if cat not in ["📁 Darsliklar", "🎨 Portfolio"]:
+                markup.insert(KeyboardButton(cat))
     
-    # Asosiy xizmatlar
-    markup.add(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
-    markup.add(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
-    
-    # Aloqa tugmasi (Yangi qo'shildi)
-    markup.add(KeyboardButton("✍️ Savol yo'llash"))
+    # B) Siz xohlagan doimiy va yo'qolgan tugmalarni aniq joylashtiramiz
+    markup.row(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
+    markup.row(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
+    markup.row(KeyboardButton("📄 Hujjat yaratish"), KeyboardButton("📁 Darsliklar"))
+    markup.row(KeyboardButton("🎨 Portfolio"), KeyboardButton("✍️ Savol yo'llash"))
     
     if is_admin:
         markup.add(KeyboardButton("⚙️ Admin panel"))
