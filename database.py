@@ -53,9 +53,8 @@ class Database:
                 title TEXT, 
                 link TEXT)""")
 
-    # --- SOZLAMALARNI LUG'AT KO'RINISHIDA OLISH ---
+    # --- SOZLAMALAR ---
     def get_settings(self):
-        """Barcha sozlamalarni lug'at ko'rinishida qaytaradi (Oylik hisoblash uchun)"""
         with self.connection:
             res = self.cursor.execute("SELECT key, value FROM settings").fetchall()
             return {row[0]: row[1] for row in res}
@@ -109,6 +108,19 @@ class Database:
         res = self.cursor.execute("SELECT name FROM quarters").fetchall()
         return [r[0] for r in res]
 
+    # --- VAKANSIYALAR (YANGI QO'SHILDI) ---
+    def get_vacancies(self):
+        """Barcha vakansiyalarni oxirgi qo'shilganidan boshlab qaytaradi"""
+        with self.connection:
+            self.cursor.execute("SELECT * FROM vacancies ORDER BY id DESC")
+            return self.cursor.fetchall()
+
+    def add_vacancy(self, title, link):
+        """Yangi vakansiya qo'shish uchun maxsus funksiya"""
+        with self.connection:
+            self.cursor.execute("INSERT INTO vacancies (title, link) VALUES (?, ?)", (title, link))
+
+    # --- TOZALASH ---
     def clear_all_data(self):
         tables = ['files', 'subjects', 'quizzes', 'categories', 'quarters', 'vacancies']
         with self.connection:
