@@ -28,8 +28,12 @@ def main_menu(is_admin=False):
         for cat in categories:
             markup.insert(KeyboardButton(cat))
     
+    # Asosiy xizmatlar
     markup.add(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
     markup.add(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
+    
+    # Aloqa tugmasi (Yangi qo'shildi)
+    markup.add(KeyboardButton("✍️ Savol yo'llash"))
     
     if is_admin:
         markup.add(KeyboardButton("⚙️ Admin panel"))
@@ -101,7 +105,6 @@ def admin_menu():
 def settings_menu():
     """Narx va BHM sozlamalari (Inline)"""
     markup = InlineKeyboardMarkup(row_width=2)
-    # Hozirgi narxlarni bazadan olish (ixtiyoriy, callback_data muhim)
     markup.add(
         InlineKeyboardButton("💰 BHMni o'zgartirish", callback_data="set_bhm"),
         InlineKeyboardButton("🎓 Oliy toifa", callback_data="set_oliy"),
@@ -109,4 +112,12 @@ def settings_menu():
         InlineKeyboardButton("🥉 2-toifa", callback_data="set_ikkinchi"),
         InlineKeyboardButton("🎖 Mutaxassis", callback_data="set_mutaxassis")
     )
+    return markup
+
+# --- 5. ALOQA (FEEDBACK) UCHUN ADMIN TUGMASI ---
+
+def feedback_reply_markup(user_id):
+    """Admin foydalanuvchining savoliga javob berishi uchun"""
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("✍️ Javob berish", callback_data=f"reply_{user_id}"))
     return markup
