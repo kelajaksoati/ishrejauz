@@ -70,8 +70,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(f"👋 Salom, {user_name}!\nKerakli bo'limni tanlang:", 
                          reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. OYLIK HISOBLASH (BOSQICHMA-BOSQICH) ---
-
+# --- 2. OYLIK HISOBLASH BO'LIMI ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -128,7 +127,6 @@ async def salary_final(message: types.Message, state: FSMContext):
     await state.update_data(olis_hudud=olis)
     
     data = await state.get_data()
-    # Advanced funksiyani chaqirish
     res = func.calculate_salary_advanced(db, data)
     
     result_text = (
@@ -146,25 +144,22 @@ async def salary_final(message: types.Message, state: FSMContext):
     await message.answer(result_text, reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await state.finish()
 
-# --- 3. AI YORDAMCHI (NEW MODEL) ---
+# --- 3. AI YORDAMCHI ---
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("🤖 Metodik savolingizni yozing:", 
-                         reply_markup=kb.back_menu())
+    await message.answer("🤖 Metodik savolingizni yozing:", reply_markup=kb.back_menu())
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
 async def ai_res(message: types.Message, state: FSMContext):
     if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
-    
     wait_msg = await message.answer("⌛️ *O'ylayapman...*")
     try:
         res = await func.get_ai_answer(message.text)
         await wait_msg.delete()
         await message.answer(f"🤖 **AI Javobi:**\n\n{res}")
     except Exception as e:
-        logging.error(f"AI error: {e}")
         await wait_msg.edit_text("❌ AI xizmatida xatolik yuz berdi.")
     finally:
         await state.finish()
@@ -186,13 +181,45 @@ async def subject_select(message: types.Message, state: FSMContext):
         files = db.get_files(cat, message.text)
         await func.send_files(bot, message.from_user.id, files)
 
-# --- 5. ADMIN VA TESTLAR ---
+# --- 5. VAKANSIYALAR BO'LIMI ---
+@dp.message_handler(text="📢 Vakansiyalar", state="*")
+async def show_vacancies(message: types.Message):
+    vacs = db.get_vacancies() 
+    if not vacs:
+        await message.answer("Hozircha bo'sh ish o'rinlari yo'q.")
+    else:
+        text = "📢 *Bo'sh ish o'rinlari:*\n\n"
+        for v in vacs:
+            text += f"🔹 {v[1]}\n🔗 [Batafsil ko'rish]({v[2]})\n\n"
+        await message.answer(text, disable_web_page_preview=True)
+
+# --- 6. ADMIN PANEL VA VAKANSIYA QO'SHISH ---
 @dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_main(message: types.Message):
     if is_admin_check(message.from_user.id):
         await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
     else:
         await message.answer("❌ Siz admin emassiz!")
+
+@dp.message_handler(text="➕ Vakansiya qo'shish", state="*")
+async def add_vac_start(message: types.Message):
+    if is_admin_check(message.from_user.id):
+        await message.answer("Vakansiya sarlavhasini kiriting (masalan: Matematika o'qituvchisi kerak):")
+        await BotStates.add_vac_title.set()
+
+@dp.message_handler(state=BotStates.add_vac_title)
+async def add_vac_t(message: types.Message, state: FSMContext):
+    await state.update_data(v_title=message.text)
+    await message.answer("Vakansiya uchun havola (link) yuboring:")
+    await BotStates.add_vac_link.set()
+
+@dp.message_handler(state=BotStates.add_vac_link)
+async def add_vac_final(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    # Eslatma: database.py dagi add_item funksiyasiga mos holda
+    db.add_item("vacancies", "title, link", f"'{data['v_title']}', '{message.text}'")
+    await message.answer("✅ Vakansiya muvaffaqiyatli qo'shildi!", reply_markup=kb.admin_menu())
+    await state.finish()
 
 # --- ISHGA TUSHIRISH ---
 if __name__ == '__main__':
