@@ -32,13 +32,18 @@ def is_float(value):
 
 # --- FSM HOLATLARI ---
 class BotStates(StatesGroup):
+    # Oylik hisoblash
     calc_toifa = State(); calc_soat = State(); calc_sinf = State()
     calc_daftar = State(); calc_sertifikat = State(); calc_staj = State(); calc_olis = State()
+    # AI va Reklama
     ai_query = State(); reklama = State()
+    # Fayl boshqaruvi
     add_f_cat = State(); add_f_subj = State(); add_f_quarter = State()
     add_f_name = State(); add_f_file = State()
+    # Vakansiya va Sozlamalar
     add_vac_title = State(); add_vac_link = State(); set_year = State()
     add_quarter = State(); del_quarter = State()
+    # Narxlar va Testlar
     changing_price = State(); new_category = State(); new_subject = State()
     add_q_subj = State(); add_q_file = State(); quiz_process = State()
 
@@ -54,12 +59,44 @@ async def cmd_start(message: types.Message, state: FSMContext):
     text = f"👋 Salom, {message.from_user.first_name}!\n\n📅 **Joriy o'quv yili:** {study_year}\n\nKerakli bo'limni tanlang:"
     await message.answer(text, reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. ONLAYN TEST (FOYDALANUVCHI) ---
+# --- 2. AI YORDAMCHI BO'LIMI ---
+@dp.message_handler(text="🤖 AI Yordamchi", state="*")
+async def ai_start(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("🤖 Savolingizni yozing (Men ta'limga oid savollarga javob beraman):", reply_markup=kb.back_menu())
+    await BotStates.ai_query.set()
+
+@dp.message_handler(state=BotStates.ai_query)
+async def ai_res(message: types.Message, state: FSMContext):
+    if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
+    wait_msg = await message.answer("⌛️ *O'ylayapman...*")
+    try:
+        res = await func.get_ai_answer(message.text)
+        await wait_msg.delete()
+        await message.answer(f"🤖 **AI Javobi:**\n\n{res}", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    except Exception as e:
+        logging.error(f"AI Error: {e}")
+        await wait_msg.edit_text("❌ Xatolik yuz berdi.")
+    finally:
+        await state.finish()
+
+# --- 3. VAKANSIYALAR ---
+@dp.message_handler(text="📢 Vakansiyalar", state="*")
+async def show_vacancies(message: types.Message):
+    vacs = db.get_vacancies() 
+    if not vacs:
+        await message.answer("😔 Hozircha bo'sh ish o'rinlari mavjud emas.")
+    else:
+        text = "📢 **O'qituvchilar uchun bo'sh ish o'rinlari:**\n\n"
+        for v in vacs:
+            text += f"✅ {v[1]}\n🔗 [Batafsil ma'lumot]({v[2]})\n" + "—" * 10 + "\n"
+        await message.answer(text, disable_web_page_preview=True, parse_mode="Markdown")
+
+# --- 4. ONLAYN TEST VA FAYL QIDIRISH ---
 @dp.message_handler(text="📝 Onlayn Test", state="*")
 async def quiz_start(message: types.Message):
     await message.answer("Qaysi fan bo'yicha test topshirmoqchisiz?", reply_markup=kb.subjects_menu())
 
-# --- 3. FAYL QIDIRISH VA TEST BOSHLASH (MOSLASHUVCHAN HANDLER) ---
 @dp.message_handler(lambda m: m.text in db.get_categories(), state="*")
 async def category_select(message: types.Message, state: FSMContext):
     await state.update_data(cat=message.text)
@@ -68,8 +105,7 @@ async def category_select(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda m: m.text in db.get_subjects(), state="*")
 async def handle_subject_selection(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    # FAYL QIDIRISH MANTIQI
-    if 'cat' in data:
+    if 'cat' in data: # Fayl qidirish
         cat = data['cat']
         if "Ish reja" in cat:
             await state.update_data(subj=message.text)
@@ -78,23 +114,19 @@ async def handle_subject_selection(message: types.Message, state: FSMContext):
             files = db.get_files(cat, message.text)
             await func.send_files(bot, message.from_user.id, files)
             await state.finish()
-    # TEST BOSHLASH MANTIQI
-    else:
+    else: # Test boshlash
         quizzes = db.get_quizzes(message.text)
-        if not quizzes:
-            return await message.answer("⚠️ Bu fan bo'yicha testlar mavjud emas.")
+        if not quizzes: return await message.answer("⚠️ Testlar mavjud emas.")
         await state.update_data(quizzes=quizzes, current_idx=0, correct_count=0)
         await send_next_quiz(message.from_user.id, state)
 
 async def send_next_quiz(user_id, state: FSMContext):
     data = await state.get_data()
-    idx = data['current_idx']
-    quizzes = data['quizzes']
+    idx, quizzes = data['current_idx'], data['quizzes']
     if idx >= len(quizzes):
         res = f"🏁 **Test yakunlandi!**\n✅ To'g'ri: {data['correct_count']}\n❌ Xato: {len(quizzes)-data['correct_count']}"
         await bot.send_message(user_id, res, reply_markup=kb.main_menu(is_admin_check(user_id)))
-        await state.finish()
-        return
+        await state.finish(); return
     q_text, q_options, q_correct = quizzes[idx]
     options = q_options.split('|')
     full_text = f"❓ **Savol {idx+1}:**\n\n{q_text}\n\n"
@@ -104,15 +136,13 @@ async def send_next_quiz(user_id, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data.startswith('quiz_ans_'), state="*")
 async def check_quiz_answer(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    if 'quizzes' not in data: return
     _, _, chosen_id, correct_id = callback.data.split('_')
-    if chosen_id == correct_id:
-        await state.update_data(correct_count=data['correct_count'] + 1)
+    if chosen_id == correct_id: await state.update_data(correct_count=data['correct_count'] + 1)
     await state.update_data(current_idx=data['current_idx'] + 1)
     await callback.message.delete()
     await send_next_quiz(callback.from_user.id, state)
 
-# --- 4. OYLIK HISOBLASH (TO'LIQ) ---
+# --- 5. OYLIK HISOBLASH ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish(); await message.answer("Toifangizni tanlang:", reply_markup=kb.toifa_menu())
@@ -120,8 +150,8 @@ async def salary_start(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=BotStates.calc_toifa)
 async def salary_toifa(message: types.Message, state: FSMContext):
-    await state.update_data(toifa=message.text)
-    await message.answer("Dars soatingiz:", reply_markup=kb.back_menu()); await BotStates.calc_soat.set()
+    await state.update_data(toifa=message.text); await message.answer("Dars soatingiz:", reply_markup=kb.back_menu())
+    await BotStates.calc_soat.set()
 
 @dp.message_handler(state=BotStates.calc_soat)
 async def salary_soat(message: types.Message, state: FSMContext):
@@ -156,7 +186,7 @@ async def salary_final(message: types.Message, state: FSMContext):
     await message.answer(f"💰 Oylik: {res:,.0f} so'm".replace(',',' '), reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await state.finish()
 
-# --- 5. ADMIN PANEL VA REKLAMA ---
+# --- 6. ADMIN PANEL VA FUNKSIYALAR ---
 @dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_panel(message: types.Message):
     if is_admin_check(message.from_user.id): await message.answer("🛠 Panel:", reply_markup=kb.admin_menu())
@@ -175,7 +205,7 @@ async def send_reklama(message: types.Message, state: FSMContext):
         except: continue
     await message.answer("✅ Yakunlandi."); await state.finish()
 
-# --- 6. ADMIN: FAYL VA TEST QO'SHISH ---
+# --- 7. ADMIN: FAYL, VAKANSIYA VA TEST QO'SHISH ---
 @dp.message_handler(text="➕ Fayl qo'shish", state="*")
 async def add_f_start(message: types.Message):
     if is_admin_check(message.from_user.id):
@@ -198,12 +228,10 @@ async def add_f_s(message: types.Message, state: FSMContext):
     await state.update_data(f_subj=message.text)
     data = await state.get_data()
     if "Ish reja" in data['f_cat']:
-        qs = db.get_quarters()
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        qs = db.get_quarters(); markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         for q in qs: markup.insert(q)
         await message.answer("Chorak:", reply_markup=markup.add("🏠 Bosh menu")); await BotStates.add_f_quarter.set()
-    else:
-        await message.answer("Fayl nomi:"); await BotStates.add_f_name.set()
+    else: await message.answer("Fayl nomi:"); await BotStates.add_f_name.set()
 
 @dp.message_handler(state=BotStates.add_f_name)
 async def add_f_n(message: types.Message, state: FSMContext):
@@ -214,6 +242,20 @@ async def add_f_final(message: types.Message, state: FSMContext):
     d = await state.get_data()
     db.add_file(d['f_name'], message.document.file_id, d['f_cat'], d['f_subj'], d.get('f_quarter'))
     await message.answer("✅ Saqlandi.", reply_markup=kb.admin_menu()); await state.finish()
+
+@dp.message_handler(text="➕ Vakansiya qo'shish", state="*")
+async def add_vac_start(message: types.Message):
+    if is_admin_check(message.from_user.id):
+        await message.answer("Sarlavha:", reply_markup=kb.back_menu()); await BotStates.add_vac_title.set()
+
+@dp.message_handler(state=BotStates.add_vac_title)
+async def add_vac_t(message: types.Message, state: FSMContext):
+    await state.update_data(v_title=message.text); await message.answer("Link:"); await BotStates.add_vac_link.set()
+
+@dp.message_handler(state=BotStates.add_vac_link)
+async def add_vac_f(message: types.Message, state: FSMContext):
+    d = await state.get_data(); db.add_vacancy(d['v_title'], message.text)
+    await message.answer("✅ Qo'shildi."); await state.finish()
 
 # --- STARTUP ---
 if __name__ == '__main__':
