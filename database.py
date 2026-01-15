@@ -1,8 +1,9 @@
 import sqlite3
+import json
 
 class Database:
     def __init__(self, db_file):
-        # check_same_thread=False aiogram kabi asinxron kutubxonalar bilan ishlashda xatolik oldini oladi
+        # check_same_thread=False aiogram kabi asinxron kutubxonalar uchun zarur
         self.connection = sqlite3.connect(db_file, check_same_thread=False)
         self.cursor = self.connection.cursor()
         self.create_tables()
@@ -32,25 +33,7 @@ class Database:
             # 4. Sozlamalar jadvali
             self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
             
-            # --- Boshlang'ich (Default) ma'lumotlarni qo'shish ---
-            
-            # Oylik sozlamalari
-            defaults = [
-                ('bhm', '375000'), 
-                ('oliy', '5000000'), 
-                ('birinchi', '4500000'), 
-                ('ikkinchi', '4000000'), 
-                ('mutaxassis', '3500000'),
-                ('study_year', '2024-2025') # O'quv yili default holati
-            ]
-            self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", defaults)
-
-            # Siz so'ragan boshlang'ich dinamik ma'lumotlar
-            self.cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", ("Ish reja",))
-            self.cursor.execute("INSERT OR IGNORE INTO subjects (name) VALUES (?)", ("Matematika",))
-            self.cursor.execute("INSERT OR IGNORE INTO quarters (name) VALUES (?)", ("1-chorak",))
-
-            # 5. Testlar va Vakansiyalar jadvali
+            # 5. Testlar jadvali (QuizEngine uchun)
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS quizzes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 question TEXT, 
@@ -58,16 +41,57 @@ class Database:
                 correct_option_id INTEGER, 
                 subject TEXT)""")
             
+            # 6. Vakansiyalar jadvali
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS vacancies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 title TEXT, 
                 link TEXT)""")
+
+            # --- Boshlang'ich (Default) ma'lumotlarni qo'shish ---
+            defaults = [
+                ('bhm', '375000'), 
+                ('oliy', '5000000'), 
+                ('birinchi', '4500000'), 
+                ('ikkinchi', '4000000'), 
+                ('mutaxassis', '3500000'),
+                ('study_year', '2024-2025')
+            ]
+            self.cursor.executemany("INSERT OR IGNORE INTO settings VALUES (?, ?)", defaults)
+
+            # Dinamik elementlar
+            self.cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", ("Ish reja",))
+            self.cursor.execute("INSERT OR IGNORE INTO subjects (name) VALUES (?)", ("Matematika",))
+            self.cursor.execute("INSERT OR IGNORE INTO quarters (name) VALUES (?)", ("1-chorak",))
+
+    # --- TESTLAR (QUIZ) BILAN ISHLASH ---
+    def add_quiz(self, question, options_json, correct_id, subject):
+        """Yangi test savolini bazaga qo'shish"""
+        with self.connection:
+            self.cursor.execute("""INSERT INTO quizzes (question, options, correct_option_id, subject) 
+                                VALUES (?, ?, ?, ?)""", (question, options_json, correct_id, subject))
+
+    def get_quizzes(self, subject):
+        """Fanga tegishli barcha testlarni tasodifiy tartibda olish (random)"""
+        with self.connection:
+            return self.cursor.execute(
+                "SELECT question, options, correct_option_id FROM quizzes WHERE subject=? ORDER BY RANDOM()", 
+                (subject,)
+            ).fetchall()
+
+    def delete_subject_quizzes(self, subject):
+        """Muayyan fanning barcha testlarini tozalash"""
+        with self.connection:
+            self.cursor.execute("DELETE FROM quizzes WHERE subject=?", (subject,))
 
     # --- SOZLAMALAR ---
     def get_settings(self):
         with self.connection:
             res = self.cursor.execute("SELECT key, value FROM settings").fetchall()
             return {row[0]: row[1] for row in res}
+
+    def update_setting(self, key, value):
+        with self.connection:
+            self.cursor.execute("UPDATE settings SET value = ? WHERE key = ?", (value, key))
 
     # --- FOYDALANUVCHILAR ---
     def add_user(self, user_id, full_name=None):
@@ -111,7 +135,9 @@ class Database:
                 return self.cursor.execute("""SELECT name, file_id FROM files 
                                            WHERE category=? AND subject=? AND quarter=?""", 
                                            (cat, subj, quarter)).fetchall()
-            return self.cursor.fetchall()
+            return self.cursor.execute("""SELECT name, file_id FROM files 
+                                       WHERE category=? AND subject=?""", 
+                                       (cat, subj)).fetchall()
 
     # --- VAKANSIYALAR ---
     def add_vacancy(self, title, link):
@@ -120,16 +146,17 @@ class Database:
 
     def get_vacancies(self):
         with self.connection:
-            self.cursor.execute("SELECT * FROM vacancies ORDER BY id DESC")
-            return self.cursor.fetchall()
+            return self.cursor.execute("SELECT * FROM vacancies ORDER BY id DESC").fetchall()
 
-    # --- TOZALASH VA STATISTIKA ---
+    # --- TOZALASH ---
     def clear_all_data(self):
-        """Muhim jadvallarni tozalash (Admin uchun)"""
         tables = ['files', 'subjects', 'quizzes', 'categories', 'quarters', 'vacancies']
         with self.connection:
             for table in tables:
                 self.cursor.execute(f"DELETE FROM {table}")
 
     def __del__(self):
-        self.connection.close()
+        try:
+            self.connection.close()
+        except:
+            pass
