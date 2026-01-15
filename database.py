@@ -14,12 +14,12 @@ class Database:
                 full_name TEXT, 
                 role TEXT DEFAULT 'user')""")
             
-            # 2. Dinamik elementlar
+            # 2. Dinamik elementlar (Kategoriya, Fan, Chorak)
             self.cursor.execute("CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS subjects (name TEXT PRIMARY KEY)")
             self.cursor.execute("CREATE TABLE IF NOT EXISTS quarters (name TEXT PRIMARY KEY)")
             
-            # 3. Fayllar
+            # 3. Fayllar jadvali
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 name TEXT, 
@@ -31,7 +31,7 @@ class Database:
             # 4. Sozlamalar (Oylik hisoblash uchun)
             self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
             
-            # 5. Testlar (QuizEngine)
+            # 5. Testlar (QuizEngine uchun)
             self.cursor.execute("""CREATE TABLE IF NOT EXISTS quizzes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 question TEXT, 
@@ -44,6 +44,13 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 title TEXT, 
                 link TEXT)""")
+
+            # 7. Aloqa (Feedback) jadvali - MUKAMMAL QILINDI
+            self.cursor.execute("""CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                user_id INTEGER, 
+                question TEXT, 
+                status TEXT DEFAULT 'new')""")
 
             # Default sozlamalar
             defaults = [
@@ -76,7 +83,6 @@ class Database:
             self.cursor.execute("INSERT OR IGNORE INTO users (id, full_name) VALUES (?, ?)", (user_id, full_name))
 
     def get_all_users(self):
-        """Reklama yuborish uchun barcha foydalanuvchilar ID sini olish"""
         with self.connection:
             return self.cursor.execute("SELECT id FROM users").fetchall()
 
@@ -114,6 +120,21 @@ class Database:
 
     def get_vacancies(self):
         return self.cursor.execute("SELECT title, link FROM vacancies ORDER BY id DESC").fetchall()
+
+    # --- ALOQA (FEEDBACK) METODLARI ---
+    def add_feedback(self, user_id, question):
+        """Foydalanuvchi savolini saqlash"""
+        with self.connection:
+            self.cursor.execute("INSERT INTO feedback (user_id, question) VALUES (?, ?)", (user_id, question))
+
+    def get_new_feedback(self):
+        """Hali javob berilmagan savollarni olish"""
+        return self.cursor.execute("SELECT * FROM feedback WHERE status='new'").fetchall()
+
+    def update_feedback_status(self, f_id, status='replied'):
+        """Savol holatini yangilash (masalan, javob berilgandan so'ng)"""
+        with self.connection:
+            self.cursor.execute("UPDATE feedback SET status=? WHERE id=?", (status, f_id))
 
     def __del__(self):
         try: self.connection.close()
