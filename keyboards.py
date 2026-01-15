@@ -71,17 +71,33 @@ def quarter_menu():
     markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
 
-# --- 3. ADMIN MENYULARI ---
+# --- 3. TEST (QUIZ) UCHUN TUGMALAR ---
+
+def quiz_answer_menu(correct_option):
+    """Test savollari uchun variantlar (Inline)"""
+    markup = InlineKeyboardMarkup(row_width=2)
+    # A, B, C variantlari. Callback ma'lumotida javob to'g'riligi tekshiriladi
+    markup.add(
+        InlineKeyboardButton("A", callback_data=f"quiz_ans_A_{correct_option}"),
+        InlineKeyboardButton("B", callback_data=f"quiz_ans_B_{correct_option}"),
+        InlineKeyboardButton("C", callback_data=f"quiz_ans_C_{correct_option}")
+    )
+    return markup
+
+# --- 4. ADMIN MENYULARI ---
 
 def admin_menu():
-    """Admin boshqaruv paneli"""
+    """Admin boshqaruv paneli (To'liq yangilangan)"""
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btns = [
         KeyboardButton("➕ Fayl qo'shish"),
+        KeyboardButton("➕ Test qo'shish"), # YANGI
         KeyboardButton("➕ Vakansiya qo'shish"),
+        KeyboardButton("➕ Kategoriya/Fan/Chorak"), # YANGI
         KeyboardButton("📅 O'quv yilini o'zgartirish"),
         KeyboardButton("🔢 Choraklarni boshqarish"),
         KeyboardButton("📊 Statistika"),
+        KeyboardButton("📢 Xabar yuborish"), # YANGI
         KeyboardButton("⚙️ Narxlarni o'zgartirish"),
         KeyboardButton("🏠 Bosh menu")
     ]
