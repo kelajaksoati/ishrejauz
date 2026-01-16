@@ -12,8 +12,9 @@ def back_menu():
     return markup
 
 def yes_no_menu():
+    # main.py dagi (message.text == "Ha") shartiga moslash uchun
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(KeyboardButton("✅ HA"), KeyboardButton("❌ YO'Q"))
+    markup.add(KeyboardButton("Ha"), KeyboardButton("Yo'q"))
     markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
 
@@ -26,10 +27,10 @@ def main_menu(is_admin=False):
     categories = db.get_categories()
     if categories:
         for cat in categories:
-            if cat not in ["📁 Darsliklar", "🎨 Portfolio"]:
+            if cat not in ["📁 Darsliklar", "🎨 Portfolio", "📄 Hujjat yaratish"]:
                 markup.insert(KeyboardButton(cat))
     
-    # B) Asosiy 8 ta tugmani aniq tartibda joylashtirish
+    # B) Asosiy tugmalar
     markup.row(KeyboardButton("💰 Oylik hisoblash"), KeyboardButton("🤖 AI Yordamchi"))
     markup.row(KeyboardButton("📢 Vakansiyalar"), KeyboardButton("📝 Onlayn Test"))
     markup.row(KeyboardButton("📄 Hujjat yaratish"), KeyboardButton("📁 Darsliklar"))
@@ -58,33 +59,7 @@ def subjects_menu():
     markup.add(KeyboardButton("🏠 Bosh menu"))
     return markup
 
-def quarter_menu():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    quarters = db.get_quarters()
-    if quarters:
-        for q in quarters:
-            markup.insert(KeyboardButton(q))
-    markup.add(KeyboardButton("🏠 Bosh menu"))
-    return markup
-
-# --- 3. TEST (QUIZ) UCHUN TUGMALAR ---
-
-def quiz_answer_menu(correct_id, options_count=3):
-    markup = InlineKeyboardMarkup(row_width=options_count)
-    labels = ["A", "B", "C", "D", "E"]
-    btns = []
-    
-    for i in range(options_count):
-        btns.append(InlineKeyboardButton(
-            labels[i], 
-            callback_data=f"quiz_ans_{i}_{correct_id}"
-        ))
-    
-    markup.add(*btns)
-    markup.add(InlineKeyboardButton("❌ Testni yakunlash", callback_data="quiz_stop"))
-    return markup
-
-# --- 4. ADMIN MENYULARI ---
+# --- 3. ADMIN MENYULARI ---
 
 def admin_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -103,21 +78,21 @@ def admin_menu():
     return markup
 
 def settings_menu():
-    """Narx, BHM va boshqa ustamalarni o'zgartirish (Siz so'ragan yangi variant)"""
-    markup = InlineKeyboardMarkup(row_width=2)
+    """Narx, BHM va yangi bo'limlarni o'zgartirish (Moslangan variant)"""
+    markup = InlineKeyboardMarkup(row_width=1) # Qulay bo'lishi uchun 1 qatordan
     markup.add(
-        InlineKeyboardButton("💰 BHMni o'zgartirish", callback_data="set_bhm"),
-        InlineKeyboardButton("📚 Daftar tekshirish", callback_data="set_daftar"),
-        InlineKeyboardButton("🏫 Kabinet mudirligi", callback_data="set_kabinet"),
-        InlineKeyboardButton("🎓 Oliy toifa", callback_data="set_oliy"),
-        InlineKeyboardButton("🥈 1-toifa", callback_data="set_birinchi"),
-        InlineKeyboardButton("🥉 2-toifa", callback_data="set_ikkinchi"),
-        InlineKeyboardButton("🎖 Mutaxassis", callback_data="set_mutaxassis")
+        InlineKeyboardButton("💰 BHM ni o'zgartirish", callback_data="set_bhm"),
+        InlineKeyboardButton("📚 Daftar tekshirish narxi", callback_data="set_daftar"),
+        InlineKeyboardButton("🏫 Kabinet mudirligi narxi", callback_data="set_kabinet"),
+        InlineKeyboardButton("🎓 Oliy toifa stavkasi", callback_data="set_oliy"),
+        InlineKeyboardButton("🥈 1-toifa stavkasi", callback_data="set_birinchi"),
+        InlineKeyboardButton("🥉 2-toifa stavkasi", callback_data="set_ikkinchi"),
+        InlineKeyboardButton("🎖 Mutaxassis stavkasi", callback_data="set_mutaxassis"),
+        InlineKeyboardButton("⬅️ Admin panelga qaytish", callback_data="admin_back")
     )
     return markup
 
-# --- 5. ALOQA (FEEDBACK) UCHUN ADMIN TUGMASI ---
-
+# --- 4. ALOQA (FEEDBACK) ---
 def feedback_reply_markup(user_id):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("✍️ Javob berish", callback_data=f"reply_{user_id}"))
