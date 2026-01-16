@@ -1,86 +1,69 @@
 import logging
-import os
 
-# --- ULTRA OYLIK HISOBLASH FUNKSIYASI ---
 def calculate_salary_final(data, db):
     """
-    O'qituvchi oyligini murakkab algoritmlar (staj, o'quvchilar soni) bilan hisoblash.
-    data: FSMContext dan kelgan ma'lumotlar (soat, toifa, uquvchi_soni, staj va h.k.)
-    db: Database obyekti (settings dagi joriy narxlarni olish uchun)
+    O'qituvchi oyligini hisoblashning eng mukammal varianti.
+    Asosiy dars, sinf rahbarlik, daftar tekshirish, kabinet mudirligi, 
+    sertifikat va olis hudud ustamalarini hisobga oladi.
     """
     try:
+        # 1. Bazadan joriy sozlamalarni olish (BHM va Toifa stavkalari)
         settings = db.get_settings()
-        
-        # 1. Asosiy parametrlar va xatolikdan himoya
-        soat = float(str(data.get('soat', 0)).replace(',', '.'))
         bhm = int(settings.get('bhm', 375000))
-        toifa = str(data.get('toifa', 'mutaxassis')).lower()
         
-        # Toifa stavkasini bazadan olish (oliy, birinchi, ikkinchi, mutaxassis)
-        stavka = int(settings.get(toifa, 3500000))
+        # Toifa va stavka (agar bazada bo'lmasa, standart qiymat)
+        toifa_nomi = str(data.get('toifa', 'mutaxassis')).lower()
+        stavka = int(settings.get(toifa_nomi, 3500000))
         
-        # 2. Asosiy dars maoshi (18 soatlik dars yuklamasi 1 stavka hisoblanadi)
+        # Dars soati (nuqta yoki vergul bilan kiritilsa ham ishlaydi)
+        soat = float(str(data.get('soat', 0)).replace(',', '.'))
+
+        # 2. ASOSIY DARS MAOSHI (18 soat = 1 stavka)
         asosiy_maosh = (stavka / 18) * soat
         
-        # 3. Sinf rahbarlik (O'quvchi soniga qarab BHM foizida - Qonunchilikka ko'ra)
+        # 3. SINF RAHBARLIK (O'quvchi soniga qarab: <=15: 50%, <=25: 75%, >25: 100% BHM)
         sinf_rahbar_summa = 0
+        u_soni = 0
         if data.get('sinf_rahbar'):
             u_soni = int(data.get('uquvchi_soni', 0))
-            if u_soni <= 15:
-                foiz = 0.5  # 50% BHM
-            elif u_soni <= 25:
-                foiz = 0.75 # 75% BHM
-            else:
-                foiz = 1.0  # 100% BHM
+            foiz = 0.5 if u_soni <= 15 else (0.75 if u_soni <= 25 else 1.0)
             sinf_rahbar_summa = bhm * foiz
             
-        # 4. Daftar tekshirish (Settings dagi summa yoki yo'q bo'lsa BHM 15%)
-        daftar_summa = 0
-        if data.get('daftar'):
-            bazaviy_daftar = int(settings.get('daftar', 0))
-            daftar_summa = bazaviy_daftar if bazaviy_daftar > 0 else (bhm * 0.15)
-            
-        # 5. Kabinet mudirligi (BHM 50% yoki bazadagi narx)
-        kabinet_summa = 0
-        if data.get('kabinet'):
-            bazaviy_kabinet = int(settings.get('kabinet', 0))
-            kabinet_summa = bazaviy_kabinet if bazaviy_kabinet > 0 else (bhm * 0.5)
+        # 4. DAFTAR VA KABINET (BHM ga nisbatan)
+        # Daftar tekshirish (15% BHM), Kabinet mudirligi (50% BHM)
+        daftar_summa = (bhm * 0.15) if data.get('daftar') else 0
+        kabinet_summa = (bhm * 0.5) if data.get('kabinet') else 0
+        
+        # 5. SERTIFIKAT USTAMASI (Stavkaning 20% qismi)
+        sert_summa = (stavka * 0.2) if data.get('sertifikat') else 0
 
-        # 6. Sertifikat ustamasi (Stavkaga nisbatan 20%)
-        # Izoh: O'zbekistonda xalqaro sertifikatlar uchun ustama stavkaning 20% yoki 50% bo'ladi
-        sert_summa = 0
-        if data.get('sertifikat'):
-            sert_summa = stavka * 0.20 
-
-        # 7. Olis hudud va Staj ustamasi (Pedagogik stajga qarab foizlar)
+        # 6. OLIS HUDUD USTAMASI (Stajga qarab stavkadan: <3y: 10%, <5y: 20%, >=5y: 50%)
         olis_summa = 0
+        staj = 0
         if data.get('olis_hudud'):
             staj = int(data.get('staj', 0))
-            # Stajga qarab ustama foizi: 1-3 yil (10%), 3-5 yil (20%), 5 yildan ko'p (50%)
-            if 1 <= staj < 3:
+            if staj < 3:
                 olis_foiz = 0.1
-            elif 3 <= staj < 5:
+            elif staj < 5:
                 olis_foiz = 0.2
-            elif staj >= 5:
-                olis_foiz = 0.5
             else:
-                olis_foiz = 0.1 # Minimal staj
+                olis_foiz = 0.5
             olis_summa = stavka * olis_foiz
 
-        # --- JAMI HISOBLASH (GRYUTTO) ---
+        # 7. JAMI HISOB-KITOB
         total_gross = asosiy_maosh + sinf_rahbar_summa + daftar_summa + kabinet_summa + sert_summa + olis_summa
         
         # Daromad solig'i (12%) va Pensiya (1%) = Jami 13% ushlanma
         soliq = total_gross * 0.13
         final_salary = total_gross - soliq
 
-        # --- NATIJANI CHIROYLI SHAKLLANTIRISH ---
+        # 8. NATIJANI FORMATLASH (Markdown va chiroyli ko'rinish)
         res = (
             f"📊 **Oylik ish haqi hisob-kitobi:**\n\n"
-            f"🔹 **Toifa:** {toifa.replace('mutaxassis', 'Mutaxassis').capitalize()}\n"
-            f"🔹 **Toifa stavkasi:** {stavka:,.0f} so'm\n"
+            f"🔹 **Toifa:** {toifa_nomi.capitalize()}\n"
+            f"🔹 **Stavka:** {stavka:,.0f} so'm\n"
             f"🔹 **Dars yuklamasi:** {soat} soat\n"
-            f"----------------------------\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
             f"➕ **Dars maoshi:** {asosiy_maosh:,.0f} so'm\n"
         )
         
@@ -96,13 +79,15 @@ def calculate_salary_final(data, db):
             res += f"➕ **Olis hudud ({staj} yil staj):** {olis_summa:,.0f} so'm\n"
         
         res += (
-            f"\n💰 **Jami (Gryutto):** {total_gross:,.0f} so'm\n"
-            f"✂️ **Ushlanmalar (13%):** {soliq:,.0f} so'm\n"
-            f"✅ **Qo'lga tegadigan summa:** {round(final_salary, 0):,.0f} so'm"
-        ).replace(',', ' ') # Uzb format uchun probel qo'shish
-        
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💰 **Jami (Gryutto):** {total_gross:,.0f} so'm\n"
+            f"✂️ **Ushlanmalar (13%):** {soliq:,.0f} so'm\n\n"
+            f"✅ **Qo'lga tegadigan summa:**\n"
+            f"👉 **{round(final_salary, 0):,.0f} so'm**"
+        ).replace(',', ' ') # O'zbekiston formatida bo'sh joy bilan ajratish
+
         return res
-        
+
     except Exception as e:
-        logging.error(f"Salary Ultra Error: {e}")
-        return "❌ Hisoblashda xatolik! Ma'lumotlarni to'g'ri kiritganingizni tekshiring."
+        logging.error(f"Salary Calculation Error: {e}")
+        return "❌ Hisoblashda xatolik yuz berdi. Iltimos, ma'lumotlarni raqamda va to'g'ri kiritganingizni tekshiring."
