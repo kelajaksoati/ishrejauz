@@ -23,25 +23,21 @@ qe = QuizEngine()
 def is_admin_check(user_id):
     return str(user_id) == str(ADMIN_ID)
 
-def is_float(value):
-    try:
-        float(value.replace(',', '.'))
-        return True
-    except ValueError:
-        return False
-
 # --- FSM HOLATLARI ---
 class BotStates(StatesGroup):
+    # Oylik hisoblash holatlari
     calc_toifa = State(); calc_soat = State(); calc_sinf = State()
     calc_daftar = State(); calc_sertifikat = State(); calc_staj = State(); calc_olis = State()
+    
     ai_query = State(); reklama = State()
     waiting_for_feedback = State(); waiting_for_admin_reply = State()
-    # Admin va Narxlar uchun yangi holatlar
+    
+    # Admin holatlari
     add_f_cat = State(); add_f_subj = State(); add_f_quarter = State()
     add_f_name = State(); add_f_file = State()
     add_vac_title = State(); add_vac_link = State()
     add_q_subj = State(); add_q_file = State()
-    waiting_for_price = State() # Narxlar uchun maxsus state
+    waiting_for_price = State()
 
 # --- 1. START VA ASOSIY MENU ---
 @dp.message_handler(commands=['start'], state="*")
@@ -54,22 +50,28 @@ async def cmd_start(message: types.Message, state: FSMContext):
     text = f"👋 Salom, {message.from_user.first_name}!\n\n📅 **Joriy o'quv yili:** {settings.get('study_year', '2024-2025')}\n\nKerakli bo'limni tanlang:"
     await message.answer(text, reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. FOYDALANUVCHI BO'LIMLARI (Darsliklar, Portfolio va h.k) ---
+# --- 2. FOYDALANUVCHI BO'LIMLARI ---
 @dp.message_handler(lambda m: m.text in ["📁 Darsliklar", "🎨 Portfolio", "📄 Hujjat yaratish", "📢 Vakansiyalar"], state="*")
 async def handle_categories(message: types.Message, state: FSMContext):
     text = message.text
     if text == "📢 Vakansiyalar":
         await message.answer("🔍 Vakansiyalar bo'limi yuklanmoqda...")
-        # Vakansiya logikasi...
+        # Bu yerga vakansiya funksiyasini ulashingiz mumkin
     else:
         await state.update_data(current_category=text)
         await message.answer(f"✅ {text} bo'limi.\nFanni tanlang:", reply_markup=kb.subjects_menu())
+
+@dp.callback_query_handler(lambda c: c.data.startswith('subj_'), state="*")
+async def process_subject_choice(callback: types.CallbackQuery, state: FSMContext):
+    # Bazadan materiallarni qidirish qismi
+    await callback.message.answer("⚠️ Tanlangan fan bo'yicha materiallar topilmadi yoki yuklash jarayonida.")
+    await callback.answer()
 
 # --- 3. AI YORDAMCHI ---
 @dp.message_handler(text="🤖 AI Yordamchi", state="*")
 async def ai_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("Savolingizni yozing (Masalan: '9-sinf dars ishlanmasi'):", reply_markup=kb.back_menu())
+    await message.answer("Savolingizni yozing:", reply_markup=kb.back_menu())
     await BotStates.ai_query.set()
 
 @dp.message_handler(state=BotStates.ai_query)
@@ -81,27 +83,68 @@ async def ai_res(message: types.Message, state: FSMContext):
     await message.answer(f"🤖 **AI Javobi:**\n\n{res}", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await state.finish()
 
-# --- 4. ADMIN PANEL VA ADMIN TUGMALARI ---
+# --- 4. OYLIK HISOBLASH (TO'LIQ ZANJIR) ---
+@dp.message_handler(text="💰 Oylik hisoblash", state="*")
+async def salary_start(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("Toifangizni tanlang:", reply_markup=kb.toifa_menu())
+    await BotStates.calc_toifa.set()
+
+@dp.message_handler(state=BotStates.calc_toifa)
+async def salary_toifa(message: types.Message, state: FSMContext):
+    await state.update_data(toifa=message.text)
+    await message.answer("Haftalik dars soatingizni kiriting (masalan: 20):")
+    await BotStates.calc_soat.set()
+
+@dp.message_handler(state=BotStates.calc_soat)
+async def salary_soat(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        return await message.answer("❌ Faqat raqam kiriting!")
+    await state.update_data(soat=int(message.text))
+    await message.answer("Sinf rahbarligingiz bormi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_sinf.set()
+
+@dp.message_handler(state=BotStates.calc_sinf)
+async def salary_sinf(message: types.Message, state: FSMContext):
+    await state.update_data(sinf_rahbar=(message.text == "Ha"))
+    await message.answer("Daftar tekshirish uchun ustama bormi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_daftar.set()
+
+@dp.message_handler(state=BotStates.calc_daftar)
+async def salary_daftar(message: types.Message, state: FSMContext):
+    await state.update_data(daftar=(message.text == "Ha"))
+    await message.answer("C1/Sertifikat uchun ustama bormi (20% yoki 50%)?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_sertifikat.set()
+
+@dp.message_handler(state=BotStates.calc_sertifikat)
+async def salary_sert(message: types.Message, state: FSMContext):
+    await state.update_data(sertifikat=(message.text == "Ha"))
+    await message.answer("Olis hududda dars berasizmi?", reply_markup=kb.yes_no_menu())
+    await BotStates.calc_olis.set()
+
+@dp.message_handler(state=BotStates.calc_olis)
+async def salary_final(message: types.Message, state: FSMContext):
+    await state.update_data(olis_hudud=(message.text == "Ha"))
+    data = await state.get_data()
+    # Hisoblash funksiyasini chaqiramiz
+    results = func.calculate_salary_final(data, db) 
+    await message.answer(results, reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await state.finish()
+
+# --- 5. ADMIN PANEL ---
 @dp.message_handler(text="⚙️ Admin panel", state="*")
 async def admin_panel(message: types.Message):
     if is_admin_check(message.from_user.id):
         await message.answer("🛠 Admin boshqaruv paneli:", reply_markup=kb.admin_menu())
 
-@dp.message_handler(lambda m: is_admin_check(m.from_user.id) and m.text in ["📊 Statistika", "➕ Fayl qo'shish", "➕ Vakansiya qo'shish", "➕ Kategoriya/Fan/Chorak", "📅 O'quv yilini o'zgartirish", "⚙️ Narxlarni o'zgartirish"], state="*")
+@dp.message_handler(lambda m: is_admin_check(m.from_user.id) and m.text in ["⚙️ Narxlarni o'zgartirish", "📊 Statistika"], state="*")
 async def handle_admin_tools(message: types.Message, state: FSMContext):
-    text = message.text
-    if text == "📊 Statistika":
+    if message.text == "⚙️ Narxlarni o'zgartirish":
+        await message.answer("O'zgartirmoqchi bo'lgan narx turini tanlang:", reply_markup=kb.settings_menu())
+    elif message.text == "📊 Statistika":
         count = len(db.get_all_users())
         await message.answer(f"👥 Botdagi jami foydalanuvchilar: {count} ta")
-    elif text == "⚙️ Narxlarni o'zgartirish":
-        await message.answer("O'zgartirmoqchi bo'lgan narx turini tanlang:", reply_markup=kb.settings_menu())
-    elif text == "➕ Fayl qo'shish":
-        await message.answer("Fayl bo'limini tanlang:", reply_markup=kb.subjects_menu())
-        await BotStates.add_f_cat.set()
-    else:
-        await message.answer(f"🛠 {text} funksiyasi uchun ma'lumot kiriting:")
 
-# --- 5. NARXARNI O'ZGARTIRISH CALLBACK VA HANDLER ---
 @dp.callback_query_handler(lambda c: c.data.startswith('set_'), state="*")
 async def process_setting_change(callback: types.CallbackQuery, state: FSMContext):
     setting_key = callback.data.replace('set_', '')
@@ -131,9 +174,6 @@ async def save_new_price(message: types.Message, state: FSMContext):
 @dp.message_handler(text="📝 Onlayn Test", state="*")
 async def quiz_start(message: types.Message):
     await message.answer("Fanini tanlang:", reply_markup=kb.subjects_menu())
-
-# ... OYLIK HISOBLASH VA ALOQA QISMLARI SHU YERDA DAVOM ETADI ...
-# (Avvalgi kodingizdagi feedback va salary handlerlarini shu yerga qo'shishingiz mumkin)
 
 if __name__ == '__main__':
     if not os.path.exists('downloads'): os.makedirs('downloads')
