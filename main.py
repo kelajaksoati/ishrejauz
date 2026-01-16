@@ -14,28 +14,28 @@ import keyboards as kb
 import functions as func
 from generator import generate_certificate_pdf
 
-# --- LOGGING VA SOZLAMALAR ---
+# --- LOGGING VA ASOSIY SOZLAMALAR ---
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot, storage=MemoryStorage())
 db = Database('ebaza_ultimate.db')
 qe = QuizEngine()
 
-# --- YORDAMCHI FUNKSIYALAR ---
+# --- ADMIN TEKSHIRUV ---
 def is_admin_check(user_id):
     return str(user_id) == str(ADMIN_ID)
 
-# --- FSM HOLATLARI ---
+# --- FSM (HOLATLAR) ---
 class BotStates(StatesGroup):
-    # Oylik hisoblash
+    # Oylik hisoblash zanjiri
     calc_toifa = State(); calc_soat = State(); calc_sinf = State()
     calc_u_soni = State(); calc_daftar = State(); calc_kabinet = State()
     calc_sertifikat = State(); calc_staj = State(); calc_olis = State()
     
-    # Vakansiya
+    # Vakansiya joylash zanjiri
     vac_muassasa = State(); vac_manzil = State(); vac_fan = State()
     
-    # Aloqa va Admin
+    # Aloqa va Sozlamalar
     waiting_for_feedback = State()
     waiting_for_price = State()
     reklama = State()
@@ -51,10 +51,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
     settings = db.get_settings()
     year = settings.get('study_year', '2024-2025')
     
-    text = f"👋 Salom, {message.from_user.first_name}!\n\n📅 **O'quv yili:** {year}\n\nKerakli bo'limni tanlang:"
+    text = (
+        f"👋 Salom, {message.from_user.first_name}!\n\n"
+        f"📅 **O'quv yili:** {year}\n"
+        f"📌 Kerakli bo'limni tanlang:"
+    )
     await message.answer(text, reply_markup=kb.main_menu(is_admin_check(user_id)))
 
-# --- 2. OYLIK HISOBLASH (ULTRA ZANJIR) ---
+# --- 2. ULTRA OYLIK HISOBLASH (LOGIK ZANJIR) ---
 @dp.message_handler(text="💰 Oylik hisoblash", state="*")
 async def salary_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -102,13 +106,13 @@ async def salary_daftar(message: types.Message, state: FSMContext):
 @dp.message_handler(state=BotStates.calc_kabinet)
 async def salary_kabinet(message: types.Message, state: FSMContext):
     await state.update_data(kabinet=(message.text == "Ha"))
-    await message.answer("Sertifikat (C1/TESOL/va h.k.) bormi?", reply_markup=kb.yes_no_menu())
+    await message.answer("C1/Sertifikat (20%) ustamasi bormi?", reply_markup=kb.yes_no_menu())
     await BotStates.calc_sertifikat.set()
 
 @dp.message_handler(state=BotStates.calc_sertifikat)
 async def salary_sert(message: types.Message, state: FSMContext):
     await state.update_data(sertifikat=(message.text == "Ha"))
-    await message.answer("Olis hududda ishlaysizmi?", reply_markup=kb.yes_no_menu())
+    await message.answer("Olis hududda dars berasizmi?", reply_markup=kb.yes_no_menu())
     await BotStates.calc_olis.set()
 
 @dp.message_handler(state=BotStates.calc_olis)
@@ -120,16 +124,14 @@ async def salary_olis_hudud(message: types.Message, state: FSMContext):
     else:
         await state.update_data(olis_hudud=False, staj=0)
         data = await state.get_data()
-        res = func.calculate_salary_final(data, db)
-        await message.answer(res, reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+        await message.answer(func.calculate_salary_final(data, db), reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
         await state.finish()
 
 @dp.message_handler(state=BotStates.calc_staj)
 async def salary_staj_final(message: types.Message, state: FSMContext):
     await state.update_data(staj=message.text)
     data = await state.get_data()
-    res = func.calculate_salary_final(data, db)
-    await message.answer(res, reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
+    await message.answer(func.calculate_salary_final(data, db), reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await state.finish()
 
 # --- 3. VAKANSIYA JOYLASHTIRISH ---
@@ -140,9 +142,7 @@ async def vac_1(message: types.Message):
 
 @dp.message_handler(state=BotStates.vac_muassasa)
 async def vac_2(message: types.Message, state: FSMContext):
-    if message.text == "🏠 Bosh menu":
-        await state.finish()
-        return await cmd_start(message, state)
+    if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
     await state.update_data(muassasa=message.text)
     await message.answer("📍 Manzil (Viloyat, tuman)?")
     await BotStates.vac_manzil.set()
@@ -167,14 +167,14 @@ async def vac_4(message: types.Message, state: FSMContext):
 
 # --- 4. TEST VA REYTING ---
 @dp.message_handler(text="📝 Onlayn Test", state="*")
-async def test_menu(message: types.Message):
+async def quiz_menu(message: types.Message):
     db.add_activity(message.from_user.id, "Test")
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
         InlineKeyboardButton("🚀 Testni boshlash", callback_data="start_quiz"),
         InlineKeyboardButton("🏆 Top 10 Reyting", callback_data="show_rating")
     )
-    await message.answer("Test bo'limi. Tanlang:", reply_markup=markup)
+    await message.answer("📝 Onlayn test va haftalik reyting bo'limi:", reply_markup=markup)
 
 @dp.callback_query_handler(text="show_rating")
 async def rating_call(call: types.CallbackQuery):
@@ -187,39 +187,45 @@ async def rating_call(call: types.CallbackQuery):
         text += f"{i}. {r[0]} - {r[1]}%\n"
     await call.message.answer(text)
 
-# --- 5. ADMIN STATISTIKA VA ALOQA ---
+# --- 5. ADMIN VA ALOQA ---
 @dp.message_handler(text="📊 Statistika")
 async def admin_stat(message: types.Message):
     if not is_admin_check(message.from_user.id): return
     u, active = db.get_stats()
-    await message.answer(f"📈 **Bot statistikasi:**\n\n👤 Foydalanuvchilar: {u}\n🔥 Bo'lim: {active[0] if active else 'Yo'q'}")
+    text = (
+        f"📈 **Bot statistikasi:**\n\n"
+        f"👤 Jami foydalanuvchilar: {u} ta\n"
+        f"🔥 Eng faol bo'lim: {active[0] if active else 'Yoq'}"
+    )
+    await message.answer(text)
 
 @dp.message_handler(text="✍️ Adminga murojaat", state="*")
 async def feedback(message: types.Message):
-    await message.answer("Xabaringizni yozing:", reply_markup=kb.back_menu())
+    await message.answer("📝 Xabaringizni yozing:", reply_markup=kb.back_menu())
     await BotStates.waiting_for_feedback.set()
 
 @dp.message_handler(state=BotStates.waiting_for_feedback)
 async def feedback_send(message: types.Message, state: FSMContext):
     if message.text == "🏠 Bosh menu": return await cmd_start(message, state)
-    await bot.send_message(ADMIN_ID, f"📩 Xabar keldi!\nKimdan: {message.from_user.full_name}\nID: `{message.from_user.id}`\n\n{message.text}")
+    db.add_feedback(message.from_user.id, message.text)
+    await bot.send_message(ADMIN_ID, f"📩 **Yangi murojaat!**\nID: `{message.from_user.id}`\n\n{message.text}")
     await message.answer("✅ Xabaringiz yuborildi.", reply_markup=kb.main_menu(is_admin_check(message.from_user.id)))
     await state.finish()
 
-# --- ADMIN: NARXLARNI O'ZGARTIRISH ---
+# --- ADMIN: SOZLAMALAR ---
 @dp.callback_query_handler(lambda c: c.data.startswith('set_'))
 async def set_price(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data.replace('set_', '')
     await state.update_data(setting_key=key)
-    await callback.message.answer(f"🔢 {key} uchun yangi raqam kiriting:")
+    await callback.message.answer(f"🔢 {key} uchun yangi qiymat (raqam) kiriting:")
     await BotStates.waiting_for_price.set()
 
 @dp.message_handler(state=BotStates.waiting_for_price)
 async def save_price(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("Faqat raqam!")
+    if not message.text.isdigit(): return await message.answer("❌ Faqat raqam kiriting!")
     data = await state.get_data()
     db.update_setting(data['setting_key'], message.text)
-    await message.answer("✅ Saqlandi", reply_markup=kb.admin_menu())
+    await message.answer(f"✅ Saqlandi: {data['setting_key']} = {message.text}", reply_markup=kb.admin_menu())
     await state.finish()
 
 if __name__ == '__main__':
